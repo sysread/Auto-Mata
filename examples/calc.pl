@@ -12,15 +12,15 @@ my %OP = (
   '**' => sub { $_[0] ** $_[1] },
 );
 
-sub welcome { print "Welcome to the example calculator!\n" }
+sub welcome { print "\nWelcome to the example calculator!\n\n" }
 sub goodbye { print "\nThanks for playing! Goodbye!\n\n" }
 
 sub error {
   my $invalid = $_->[0];
   if (exists $OP{$invalid}) {
-    print "At least two terms are required before an operator may be applied.\n";
+    print "At least two terms are required before an operator may be applied.\n\n";
   } else {
-    print "I do not understand '$invalid'. Please enter a term or operator.\n";
+    print "I do not understand '$invalid'. Please enter a term or operator.\n\n";
   }
 }
 
@@ -32,11 +32,8 @@ sub input {
   my $value = <STDIN>;
   print "\n";
 
-  chomp $value;
-  $value =~ s/^\s*//sm;
-  $value =~ s/\s*$//sm;
-
-  split /\s+/, $value;
+  ($value) = $value =~ /\s*(.*)\s*$/;
+  reverse split /\s+/, $value;
 }
 
 sub solve {
@@ -81,7 +78,7 @@ my $builder = machine {
     with { error };
 
   transition 'ERROR', to 'INPUT',
-    on $Incomplete,
+    on $Invalid,
     with { shift @$_ };
 
   transition 'INPUT', to 'TERM',
@@ -94,11 +91,7 @@ my $builder = machine {
 
 my @stack;
 my $fsm = $builder->(\@stack);
-my $max = 20;
 
 while (my $state = $fsm->()) {
-  if (--$max == 0) {
-    warn "Limit reached!";
-    last;
-  }
+  ;
 }

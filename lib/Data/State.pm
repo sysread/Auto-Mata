@@ -31,77 +31,77 @@ coerce $Code, from Undef, via { sub {} };
 sub machine (&) {
   my $code = shift;
 
+  #-----------------------------------------------------------------------------
+  # Define transitions
+  #-----------------------------------------------------------------------------
   my @states;
   my %table;
+  my %map;
 
   my %fsm = (
     ready  => undef,
     term   => undef,
     states => \@states,
     table  => \%table,
+    map    => \%map,
   );
 
   do { local $_ = \%fsm; $code->() };
 
-  croak 'no ready state defined'
-    unless $fsm{ready};
+  #-----------------------------------------------------------------------------
+  # Validate sanity as much as possible without strict types and without
+  # guarantees on the return type of transitions.
+  #-----------------------------------------------------------------------------
+  validate($fsm{ready}, $fsm{term}, \%map);
 
-  croak 'no terminal state defined'
-    unless $fsm{terminal};
-
-  croak 'no transitions defined'
-    unless @states;
-
-  croak 'no transition defined for ready state'
-    unless $table{$fsm{ready}};
-
-  croak 'no transition defined to terminal state'
-    unless first { $_->[0] eq $fsm{terminal} } values %table;
-
-  my $ready    = Tuple[Enum[$fsm{ready}], Undef];
-  my $terminal = Tuple[Enum[$fsm{term}],  Any];
-
+  #-----------------------------------------------------------------------------
+  # Build function that transitions based on current state
+  #-----------------------------------------------------------------------------
   my @param;
   foreach my $state (@states) {
     my ($next, $mutate) = @{$table{$state->name}};
     push @param, $state, sub {
       debug("%s -> %s: %s", $_->[0], $next, explain($_->[1]));
       do { local $_ = $_->[1]; $mutate->() };
-      $state = [$next, $_->[1]];
+      @$_ = ($next, $_->[1]);
     };
   }
 
   my $fail = sub { croak 'no transitions match ' . explain($_) };
   my $transform = compile_match_on_type(@param, => $fail);
+  my $terminal = Tuple[Enum[$fsm{term}], Any];
 
+  #-----------------------------------------------------------------------------
+  # Return function that builds a transition engine for the given input
+  #-----------------------------------------------------------------------------
   return sub {
     my $state = [$fsm{ready}, shift];
     my $term;
 
     sub {
       return if $term;
-      $state = $transform->($state);
-      $term  = $terminal->check($state);
+      $transform->($state);
+      $term = $terminal->check($state);
       return $state->[0];
     };
   };
 }
 
-sub ready ($) { $_->{ready} = shift }
+sub ready    ($)   { $_->{ready} = shift }
+sub terminal ($)   { $_->{term} = shift }
+sub to       ($;%) { (to   => shift, @_) }
+sub on       ($;%) { (on   => shift, @_) }
+sub with     (&;%) { (with => shift, @_) }
 
-sub terminal ($) { $_->{term} = shift }
-
-sub to   ($;%) { (to   => shift, @_) }
-sub on   ($;%) { (on   => shift, @_) }
-sub with (&;%) { (with => shift, @_) }
 sub transition ($%) {
   state $check = compile($Ident, $Ident, $Type, $Code);
   my ($arg, %param) = @_;
   my ($from, $to, $on, $with) = $check->($arg, @param{qw(to on with)});
-  $with //= sub {};
   my $init = declare sprintf('%s_TO_%s', $from, $to), as Tuple[Enum[$from], $on];
   push @{$_->{states}}, $init;
   $_->{table}{$init->name} = [$to, $with];
+  $_->{map}{$from} //= {};
+  $_->{map}{$from}{$to} = 1;
 }
 
 sub debug {
@@ -115,6 +115,42 @@ sub explain {
   local $Data::Dumper::Indent = 0;
   local $Data::Dumper::Terse  = 1;
   Dumper($state);
+}
+
+sub validate {
+  my ($ready, $term, $map) = @_;
+
+  croak 'no ready state defined'
+    unless $ready;
+
+  croak 'no terminal state defined'
+    unless $term;
+
+  croak 'no transitions defined'
+    unless keys %$map;
+
+  croak 'no transition defined for ready state'
+    unless $map->{$ready};
+
+  my $is_terminated;
+
+  foreach my $from (keys %$map) {
+    croak 'invalid transition from terminal state detected'
+      if $from eq $term;
+
+    foreach my $to (keys %{$map->{$from}}) {
+      if ($to eq $term) {
+        $is_terminated = 1;
+        next;
+      }
+
+      croak "no subsequent states are reachable from $to"
+        unless exists $map->{$to};
+    }
+  }
+
+  croak 'no transition defined to terminal state'
+    unless $is_terminated;
 }
 
 1;
