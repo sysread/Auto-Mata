@@ -41,6 +41,10 @@ subtest 'positive path' => sub {
 };
 
 subtest 'sanity checks' => sub {
+  like dies { transition 'READY' }, qr/cannot be called outside a state machine definition block/, 'transition outside the machine';
+  like dies { ready 'READY' }, qr/cannot be called outside a state machine definition block/, 'ready outside the machine';
+  like dies { terminal 'TERM' }, qr/cannot be called outside a state machine definition block/, 'terminal outside the machine';
+
   like dies { machine { } }, qr/no ready state defined/, 'missing ready state';
   like dies { machine { ready 'READY' } }, qr/no terminal state defined/, 'missing terminal state';
   like dies { machine { ready 'READY'; terminal 'TERM' } }, qr/no transitions defined/, 'missing transitions';
