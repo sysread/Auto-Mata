@@ -59,11 +59,13 @@ sub machine (&) {
   #-----------------------------------------------------------------------------
   my @param;
   foreach my $state (@states) {
-    my ($next, $mutate) = @{$table{$state->name}};
+    my ($to, $mutate) = @{$table{$state->name}};
     push @param, $state, sub {
-      debug("%s -> %s: %s", $_->[0], $next, explain($_->[1]));
-      do { local $_ = $_->[1]; $mutate->() };
-      @$_ = ($next, $_->[1]);
+      debug("%s -> %s: %s", $_->[0], $to, explain($_->[1]));
+
+      my ($from, $data) = @$_;
+      do { local $_ = $data; $mutate->() };
+      @$_ = ($to, $data);
     };
   }
 
@@ -82,7 +84,7 @@ sub machine (&) {
       return if $term;
       $transform->($state);
       $term = $terminal->check($state);
-      return $state->[0];
+      wantarray ? @$state : $state->[1];
     };
   };
 }
