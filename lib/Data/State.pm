@@ -1,115 +1,113 @@
 package Data::State;
 # ABSTRACT: State machine grease
 
+use v5.10;
 use strict;
 use warnings;
 use parent 'Exporter';
 use Carp;
 use Data::Dumper;
-use Iterator::Simple qw(iterator);
+use List::Util qw(first);
 use Type::Utils -all;
 use Types::Standard -all;
+use Type::Params qw(compile);
 
 our @EXPORT = qw(
   machine
-  transition
   ready
   terminal
+  transition
   to
   on
   with
 );
 
-#sub machine (&) {
-#  my $code = shift;
-#  my %fsm = (ready => undef, terminal => undef, states => {});
-#  do { local $_ = \%fsm; $code->() };
-#
-#  croak 'no ready state defined' unless $fsm{ready};
-#  croak 'no terminal state defined' unless $fsm{terminal};
-#  croak 'no transitions defined for ready state' unless $fsm{states}{$fsm{ready}};
-#
-#  sub {
-#    my $acc = shift;
-#    my $state = $fsm{ready};
-#
-#    iterator {
-#      return if $state eq $fsm{terminal};
-#
-#      foreach my $to (keys %{$fsm{states}{$state}}) {
-#        foreach my $transition (@{$fsm{states}{$state}{$to}}) {
-#          my ($on, $inlined, $with) = @$transition;
-#          if ($inlined ? eval $inlined : $on->check($acc)) {
-#            do { local $_ = $acc; $with->() } if $with;
-#            $state = $to;
-#            return $state;
-#          }
-#        }
-#      }
-#
-#      croak "no transitions match $state";
-#    };
-#  };
-#}
-
-#sub transition ($%) {
-#  my ($from, %param) = @_;
-#  my $to   = $param{to};
-#  my $on   = $param{on}   // Any;
-#  my $with = $param{with} // sub { 1 };
-#
-#  $_->{states}{$from} //= {};
-#  $_->{states}{$from}{$to} //= [];
-#
-#  my $inlined = $on->inline_check('$acc')
-#    if $on->can_be_inlined;
-#
-#  push @{$_->{states}{$from}{$to}}, [$on, $inlined, $with];
-#}
-
-our $Ident = declare 'Ident', as StrMatch[qr/^[A-Z][_0-9A-Z]*$/i];
-our $State = declare 'State', as Tuple[$Ident, Any];
+my $Ident = declare 'Ident', as StrMatch[qr/^[A-Z][_0-9A-Z]*$/i];
+my $State = declare 'State', as Tuple[$Ident, Any];
+my $Type  = declare 'Type',  as InstanceOf['Type::Tiny'];
+my $Code  = declare 'Code',  as CodeRef;
+coerce $Code, from Undef, via { sub {} };
 
 sub machine (&) {
   my $code = shift;
 
-  my (@states, %table);
+  my @states;
+  my %table;
 
   my %fsm = (
-    ready       => undef,
-    terminal    => undef,
-    states      => \@states,
-    transitions => \%table,
+    ready  => undef,
+    term   => undef,
+    states => \@states,
+    table  => \%table,
   );
 
   do { local $_ = \%fsm; $code->() };
 
-  croak 'no ready state defined' unless $fsm{ready};
-  croak 'no terminal state defined' unless $fsm{terminal};
+  croak 'no ready state defined'
+    unless $fsm{ready};
 
-  my $terminal = Tuple[Enum[$fsm{terminal}], Any];
-  my $classify = classifier(@states);
+  croak 'no terminal state defined'
+    unless $fsm{terminal};
 
-  sub {
+  croak 'no transitions defined'
+    unless @states;
+
+  croak 'no transition defined for ready state'
+    unless $table{$fsm{ready}};
+
+  croak 'no transition defined to terminal state'
+    unless first { $_->[0] eq $fsm{terminal} } values %table;
+
+  my $ready    = Tuple[Enum[$fsm{ready}], Undef];
+  my $terminal = Tuple[Enum[$fsm{term}],  Any];
+
+  my @param;
+  foreach my $state (@states) {
+    my ($next, $mutate) = @{$table{$state->name}};
+    push @param, $state, sub {
+      debug("%s -> %s: %s", $_->[0], $next, explain($_->[1]));
+      do { local $_ = $_->[1]; $mutate->() };
+      $state = [$next, $_->[1]];
+    };
+  }
+
+  my $fail = sub { croak 'no transitions match ' . explain($_) };
+  my $transform = compile_match_on_type(@param, => $fail);
+
+  return sub {
     my $state = [$fsm{ready}, shift];
     my $term;
 
-    iterator {
+    sub {
       return if $term;
-
-      if (my $match = $classify->($state)) {
-        my ($next, $transform) = @{$table{$match->name}};
-warn "$state->[0] -> $next: ", explain($state), "\n";
-        do { local $_ = $state->[1]; $transform->() };
-        $state = [$next, $state->[1]];
-
-        $term = 1 if $terminal->check($state);
-        return $next;
-      }
-
-      croak 'no transitions match ' . explain($state);
+      $state = $transform->($state);
+      $term  = $terminal->check($state);
+      return $state->[0];
     };
   };
+}
+
+sub ready ($) { $_->{ready} = shift }
+
+sub terminal ($) { $_->{term} = shift }
+
+sub to   ($;%) { (to   => shift, @_) }
+sub on   ($;%) { (on   => shift, @_) }
+sub with (&;%) { (with => shift, @_) }
+sub transition ($%) {
+  state $check = compile($Ident, $Ident, $Type, $Code);
+  my ($arg, %param) = @_;
+  my ($from, $to, $on, $with) = $check->($arg, @param{qw(to on with)});
+  $with //= sub {};
+  my $init = declare sprintf('%s_TO_%s', $from, $to), as Tuple[Enum[$from], $on];
+  push @{$_->{states}}, $init;
+  $_->{table}{$init->name} = [$to, $with];
+}
+
+sub debug {
+  return unless $ENV{DEBUG_STATE};
+  my ($msg, @args) = @_;
+  printf("DEBUG> $msg\n", @args);
 }
 
 sub explain {
@@ -118,21 +116,5 @@ sub explain {
   local $Data::Dumper::Terse  = 1;
   Dumper($state);
 }
-
-sub transition ($%) {
-  my ($from, %param) = @_;
-  my $to   = $param{to};
-  my $on   = $param{on} // Any;
-  my $with = $param{with} // sub { $_ };
-  my $init = declare sprintf('%s_TO_%s', $from, $to), as Tuple[Enum[$from], $on];
-  push @{$_->{states}}, $init;
-  $_->{transitions}{$init->name} = [$to, $with];
-}
-
-sub ready    ($)   { $_->{ready} = shift }
-sub terminal ($)   { $_->{terminal} = shift };
-sub to       ($;%) { (to   => shift, @_) }
-sub on       ($;%) { (on   => shift, @_) }
-sub with     (&;%) { (with => shift, @_) }
 
 1;
