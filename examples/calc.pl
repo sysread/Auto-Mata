@@ -1,8 +1,8 @@
 use strict;
 use warnings;
 use List::Util qw(reduce);
-use Data::State;
 use Types::Standard -all;
+use Auto::Mata;
 
 my %OP = (
   '+'  => sub { $_[0]  + $_[1] },

@@ -1,7 +1,7 @@
 use Test2::Bundle::Extended;
 use Types::Standard -types;
 use Type::Utils -all;
-use Data::State;
+use Auto::Mata;
 
 subtest 'positive path' => sub {
   my $Remaining = declare as ArrayRef[Num], where { @$_ > 1 };

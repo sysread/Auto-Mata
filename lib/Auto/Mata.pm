@@ -1,4 +1,4 @@
-package Data::State;
+package Auto::Mata;
 # ABSTRACT: State machine grease
 
 use v5.10;
