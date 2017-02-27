@@ -16,10 +16,7 @@ subtest 'positive path' => sub {
 
     transition 'REDUCE', to 'REDUCE',
       on $Remaining,
-      with {
-        my ($x, $y, @rem) = @$_;
-        @$_ = ($x + $y, @rem);
-      };
+      with { @$_ = (shift(@$_) + shift(@$_), @$_) };
 
     transition 'REDUCE', to 'TERM',
       on $Reduced;
@@ -74,6 +71,7 @@ subtest 'sanity checks' => sub {
     machine {
       ready 'READY'; terminal 'TERM';
       transition 'READY', to 'FOO', on Any;
+      transition 'FOO', to 'TERM', on Any;
       transition 'TERM', to 'READY', on Any;
     };
   }, qr/invalid transition from terminal state detected/, 'invalid terminal state transition';
