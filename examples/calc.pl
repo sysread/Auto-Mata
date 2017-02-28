@@ -2,6 +2,7 @@ use strict;
 use warnings;
 use List::Util qw(reduce);
 use Types::Standard -all;
+use Type::Utils -all;
 use Auto::Mata;
 
 my %OP = (
@@ -44,18 +45,15 @@ sub solve {
   print "  $eq = $n\n\n";
 }
 
-my $Term       = Num;
-my $Op         = Enum[keys %OP];
-my $Exit       = Enum[qw(quit q exit x)];
-my $Input      = $Exit | $Op | $Term;
-
-my $Stack      = ArrayRef[$Input];
-my $Incomplete = ArrayRef[$Term];
-my $Equation   = Tuple[$Op, $Term, $Term, slurpy ArrayRef[$Term]];
-my $ExitCmd    = Tuple[$Exit, slurpy ArrayRef[$Input]];
-
-my $Valid      = $Incomplete | $Equation | $ExitCmd;
-my $Invalid    = $Valid->complementary_type;
+my $Term       = declare 'Term',       as Num;
+my $Op         = declare 'Op',         as Enum[keys %OP];
+my $Exit       = declare 'Exit',       as Enum[qw(quit q exit x)];
+my $Input      = declare 'Input',      as $Term | $Op | $Exit;
+my $Stack      = declare 'Stack',      as ArrayRef[$Input];
+my $Incomplete = declare 'Incomplete', as ArrayRef[$Term];
+my $Equation   = declare 'Equation',   as Tuple[$Op, $Term, $Term, slurpy ArrayRef[$Term]];
+my $ExitCmd    = declare 'ExitCmd',    as Tuple[$Exit, slurpy ArrayRef[$Term]];
+my $Invalid    = declare 'Invalid',    as Tuple[~$Input, slurpy ArrayRef[Any]];
 
 my $builder = machine {
   ready 'READY';
@@ -63,35 +61,37 @@ my $builder = machine {
 
   transition 'READY', to 'INPUT',
     on $Incomplete,
-    with { welcome };
+    with { welcome; [] };
 
   transition 'INPUT', to 'INPUT',
     on $Incomplete,
-    with { unshift @$_, input };
+    with { unshift @$_, input; $_ };
 
   transition 'INPUT', to 'ANSWER',
     on $Equation,
-    with { solve; @$_ = () };
+    with { solve; [] };
 
   transition 'INPUT', to 'ERROR',
     on $Invalid,
-    with { error };
+    with { error; $_ };
 
   transition 'ERROR', to 'INPUT',
     on $Invalid,
-    with { shift @$_ };
+    with { shift @$_; $_ };
 
   transition 'INPUT', to 'TERM',
     on $ExitCmd,
-    with { goodbye };
+    with { goodbye; [] };
 
   transition 'ANSWER', to 'INPUT',
     on $Incomplete;
 };
 
-my @stack;
-my $fsm = $builder->(\@stack);
+my $stack = [];
+my $fsm = $builder->($stack);
 
-while (my $state = $fsm->()) {
+my $backstop = 50;
+while ($fsm->()) {
+  die "backstop reached" if --$backstop == 0;
   ;
 }

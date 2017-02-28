@@ -17,10 +17,10 @@ version 0.01
   use Auto::Mata;
   use Types::Standard -types;
 
-  my $NoData   = Dict[first => Optional[Str], last => Optional[Str], age => Optional[Int]];
-  my $HasFirst = Dict[first => Str, last => Optional[Str], age => Optional[Int]];
-  my $HasLast  = Dict[first => Str, last => Str, age => Optional[Int]];
-  my $Complete = Dict[first => Str, last => Str, age => Int];
+  my $NoData   = Undef,
+  my $HasFirst = Tuple[Str];
+  my $HasLast  = Tuple[Str, Str];
+  my $Complete = Tuple[Str, Str, Int];
 
   sub get_input {
     my $query = shift;
@@ -36,28 +36,27 @@ version 0.01
 
     transition 'READY', to 'FIRST',
       on $NoData,
-      with { $_->{first} = get_input("What is your first name? ") };
+      with { return [get_input("What is your first name? ")] };
 
     transition 'FIRST', to 'LAST',
       on $HasFirst,
-      with { $_->{last} = get_input("What is your last name? ") };
+      with { return [@$_, get_input("What is your last name? ")] };
 
     transition 'LAST', to 'AGE',
       on $HasLast,
-      with { $_->{age} = get_input("What is your age? ") };
+      with { return [@$_, get_input("What is your age? ")] };
 
     transition 'AGE', to 'TERM',
       on $Complete;
   };
 
-  my $data = {};
-  my $prog = $fsm->($data);
+  my $prog = $fsm->(my $data);
 
-  while ($prog->()) {
+  while ($prog->() ne 'TERM') {
     ;
   }
 
-  print "Hello $data->{first} $data->{last}, aged $data->{age} years.\n";
+  printf "Hello %s %s, aged %d years!\n", @$data;
 
 =head1 DESCRIPTION
 

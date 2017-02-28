@@ -8,10 +8,10 @@ package Auto::Mata;
   use Auto::Mata;
   use Types::Standard -types;
 
-  my $NoData   = Dict[first => Optional[Str], last => Optional[Str], age => Optional[Int]];
-  my $HasFirst = Dict[first => Str, last => Optional[Str], age => Optional[Int]];
-  my $HasLast  = Dict[first => Str, last => Str, age => Optional[Int]];
-  my $Complete = Dict[first => Str, last => Str, age => Int];
+  my $NoData   = Undef,
+  my $HasFirst = Tuple[Str];
+  my $HasLast  = Tuple[Str, Str];
+  my $Complete = Tuple[Str, Str, Int];
 
   sub get_input {
     my $query = shift;
@@ -27,28 +27,27 @@ package Auto::Mata;
 
     transition 'READY', to 'FIRST',
       on $NoData,
-      with { $_->{first} = get_input("What is your first name? ") };
+      with { return [get_input("What is your first name? ")] };
 
     transition 'FIRST', to 'LAST',
       on $HasFirst,
-      with { $_->{last} = get_input("What is your last name? ") };
+      with { return [@$_, get_input("What is your last name? ")] };
 
     transition 'LAST', to 'AGE',
       on $HasLast,
-      with { $_->{age} = get_input("What is your age? ") };
+      with { return [@$_, get_input("What is your age? ")] };
 
     transition 'AGE', to 'TERM',
       on $Complete;
   };
 
-  my $data = {};
-  my $prog = $fsm->($data);
+  my $prog = $fsm->(my $data);
 
-  while ($prog->()) {
+  while ($prog->() ne 'TERM') {
     ;
   }
 
-  print "Hello $data->{first} $data->{last}, aged $data->{age} years.\n";
+  printf "Hello %s %s, aged %d years!\n", @$data;
 
 =head1 DESCRIPTION
 
@@ -89,13 +88,15 @@ our @EXPORT = qw(
   with
 );
 
+our $DEBUG = $ENV{DEBUG_AUTOMATA};
+
 my $Ident = declare 'Ident', as StrMatch[qr/^[A-Z][_0-9A-Z]*$/i];
 my $State = declare 'State', as Tuple[$Ident, Any];
 my $Type  = declare 'Type',  as InstanceOf['Type::Tiny'];
 my $Code  = declare 'Code',  as CodeRef;
 coerce $Code, from Undef, via { sub { $_ } };
 
-my $Transition = declare 'Transition', as Tuple[$Type, $Code];
+my $Transition = declare 'Transition', as Tuple[$Type, $Type, $Code];
 my $Automata = declare 'Automata', as Dict[
   ready => Maybe[$Ident],
   term  => Maybe[$Ident],
@@ -150,6 +151,13 @@ sub machine (&) {
     validate();
   };
 
+foreach my $from (keys %map) {
+  print "\nFROM $from\n";
+  foreach my $to (keys %{$map{$from}}) {
+    print " TO $to WHEN $map{$from}{$to}[0]\n";
+  }
+}
+
   #-----------------------------------------------------------------------------
   # Build the transition engine
   #-----------------------------------------------------------------------------
@@ -159,8 +167,20 @@ sub machine (&) {
     # Create type constraints for each "from" state to validate that the
     # machine's state is consistent after each transition.
     #---------------------------------------------------------------------------
-    my $union = reduce { $a | $b } map { $_->[0] } values %{$map{$from}};
-    my $next  = Tuple[Enum[keys %{$map{$from}}], $union];
+    my @next_types;
+    foreach my $to (keys %{$map{$from}}) {         # $to = each state $from can transition to
+      foreach my $next (keys %{$map{$to}}) {       # $next = each state $to can transition to
+        if ($next eq $fsm{term}) {                 # Termination matches any result since there
+          push @next_types, Any;                   #   are no further states to validate against
+        } else {
+          push @next_types, $map{$to}{$next}->[0]; # Initial state constraints for each $next
+        }
+      }
+    }
+
+    my $next = declare "Next_State_After_$from", as @next_types
+      ? reduce { $a | $b } @next_types
+      : Any;
 
     #---------------------------------------------------------------------------
     # Create a type constraint that matches each possible initial "from" state.
@@ -168,26 +188,27 @@ sub machine (&) {
     # for that transisiton.
     #---------------------------------------------------------------------------
     foreach my $to (keys %{$map{$from}}) {
-      my ($on, $with) = @{$map{$from}{$to}};
-      my $name = sprintf('%s_TO_%s', $from, $to);
-      my $init = declare $name, as Tuple[Enum[$from], $on];
+      my ($match, $on, $with) = @{$map{$from}{$to}};
 
-      push @match, $init, sub {
+      push @match, $match, sub {
         debug("%s -> %s: %s", $_->[0], $to, explain($_->[1]));
+        my ($from, $data) = @$_;
 
-        my $state = dclone $_->[1];
+        do { local $_ = $data; $data = $with->() };
 
-        if ($on) {
-          do {
-            local $_ = $state;
-            $state = $with->();
-          };
+        my $state = [$to, $data];
+
+        if (defined(my $error = $next->validate($state))) {
+          my @msg;
+          push @msg, sprintf('Transition from %s to %s resulted in an invalid state.', $from, $to);
+          push @msg, sprintf('Current state is: %s', explain($state));
+          push @msg, sprintf('Type constraint returned an error: %s', $error);
+          push(@msg, join "\n", map { " -$_" } @{$next->validate_explain($state, 'NEXT STATE')}) if $DEBUG;
+          croak join("\n", @msg);
         }
 
-        my $next_state = [$to, $state];
-        $next->assert_valid($next_state);
-
-        @$_ = @$next_state;
+        @$_ = @$state;
+        return $state;
       };
     }
   }
@@ -200,14 +221,16 @@ sub machine (&) {
   # Return function that builds a transition engine for the given input
   #-----------------------------------------------------------------------------
   return sub {
-    my $state = [$fsm{ready}, shift];
+    my $data  = \$_[0];
+    my $state = [$fsm{ready}, $_[0]];
     my $done;
 
     sub {
       return if $done;
-      $transform->($state);
-      $done = $terminal->check($state);
-      wantarray ? @$state : $state->[1];
+      $state = $transform->($state);
+      $done  = $terminal->check($state);
+      $$data = $state->[1];
+      wantarray ? (@$state) : $state->[0];
     };
   };
 }
@@ -244,23 +267,28 @@ sub transition ($%) {
   croak "transition from state $from to $to is already defined"
     if exists $_->{map}{$from}{$to};
 
+  my $name  = sprintf('%s_to_%s', $from, $to);
+  my $match = declare $name, as Tuple[Enum[$from], $on];
+
   $_->{map}{$from} //= {};
-  $_->{map}{$from}{$to} = [$on, $with];
+  $_->{map}{$from}{$to} = [$match, $on, $with];
 }
 
 #-------------------------------------------------------------------------------
 #
 #-------------------------------------------------------------------------------
 sub assert_in_the_machine {
-  croak 'cannot be called outside a state machine definition block'
-    unless $_ && $Automata->check($_);
+  unless ($_ && !defined(my $msg = $Automata->validate_explain($_, '$_'))) {
+    debug('Invalid machine state detected: %s', join("\n", map {"\t$_"} @$msg)) if $msg;
+    croak 'cannot be called outside a state machine definition block';
+  }
 }
 
 #-------------------------------------------------------------------------------
 #
 #-------------------------------------------------------------------------------
 sub debug {
-  return unless $ENV{DEBUG_AUTOMATA};
+  return unless $DEBUG;
   my ($msg, @args) = @_;
   printf("DEBUG> $msg\n", @args);
 }

@@ -37,7 +37,7 @@ subtest 'positive path' => sub {
 
   is \@states, [qw(REDUCE REDUCE REDUCE TERM)], 'expected state progression';
   is \@results, [[1, 2, 3], [3, 3], [6], [6]], 'expected result progression';
-  is $arr, [1, 2, 3], 'accumulator preserved';
+  is $arr, [6], 'accumulator contains expected result';
 };
 
 subtest 'sanity checks' => sub {
