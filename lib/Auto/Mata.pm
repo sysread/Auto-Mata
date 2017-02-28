@@ -223,20 +223,21 @@ sub machine (&) {
       $state = $transform->($state);
       $done  = $terminal->check($state);
       $$data = $state->[1];
-      wantarray ? (@$state) : $state->[0];
+      wantarray ? @$state : $state->[0];
     };
   };
 }
 
 =head2 ready
 
+Sets the name given to the "ready" state. This is the initial state held by the
+state machine.
+
 =head2 terminal
 
-=head2 to
-
-=head2 on
-
-=head2 with
+Sets the name given to the "terminal" state. This is the final state held by
+the state machine. Once in this state, the machine will cease to perform any
+more work.
 
 =cut
 
@@ -247,6 +248,44 @@ sub on       ($;%) { (on   => shift, @_) }
 sub with     (&;%) { (with => shift, @_) }
 
 =head2 transition
+
+These functions define transitions. During a transition, the program will step
+from one state to another. Each transition requires a type constraint that is
+used to match the current state of the program and may optionally include a
+code block that will transform the state reference appropriately for the next
+transition.
+
+It is an error to have two identical transitions, even with different
+constraints. This is intentional. A transition that matches two different
+states is, in fact, two distinct transitions, and the program should be modeled
+as such in order to prevent errors due to unexpected or improperly checked
+data.  In general, it is a good idea to be as specific as possible with the
+type constraints used to define the initial transition state.
+
+The first transition is always from the "ready" state. The final transition is
+always to the "terminal" state. There may be no transitions from the "terminal"
+state.
+
+The following functions are used in concert with L</transition>.
+
+=over
+
+=item to
+
+A name identifying the state held I<after> the transition.
+
+=item on
+
+A L<Type::Tiny> constraint that matches the state immediately I<before> the
+transition.
+
+=item with
+
+A code block whose return type is the mutable state used to determine the
+next transition to pefform. Within the code block C<$_> is a reference to
+the program state.
+
+=back
 
 =cut
 
@@ -268,17 +307,21 @@ sub transition ($%) {
 }
 
 #-------------------------------------------------------------------------------
-#
+# Throws an error when not within a call to `machine`. When debugging, includes
+# the full `validate_explain` if the error was due to a type-checking failure.
 #-------------------------------------------------------------------------------
 sub assert_in_the_machine {
-  unless ($_ && !defined(my $msg = $Automata->validate_explain($_, '$_'))) {
-    debug('Invalid machine state detected: %s', join("\n", map {"\t$_"} @$msg)) if $msg;
-    croak 'cannot be called outside a state machine definition block';
+  croak 'cannot be called outside a state machine definition block' unless $_;
+
+  unless (!defined(my $msg = $Automata->validate_explain($_, '$_'))) {
+    debug('Invalid machine state detected: %s', join("\n", map {" -$_"} @$msg)) if $msg;
+    croak 'Invalid machine definition';
   }
 }
 
 #-------------------------------------------------------------------------------
-#
+# Outputs a debug message preceded by 'DEBUG> ' when $DEBUG is true. Behaves
+# like `printf` in all other respects.
 #-------------------------------------------------------------------------------
 sub debug {
   return unless $DEBUG;
@@ -287,7 +330,7 @@ sub debug {
 }
 
 #-------------------------------------------------------------------------------
-#
+# Alias for Data::Dumper::Dumper with no Indent and Terse output.
 #-------------------------------------------------------------------------------
 sub explain {
   my $state = shift;
