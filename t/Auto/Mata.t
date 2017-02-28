@@ -16,7 +16,7 @@ subtest 'positive path' => sub {
 
     transition 'REDUCE', to 'REDUCE',
       on $Remaining,
-      with { @$_ = (shift(@$_) + shift(@$_), @$_) };
+      with { [shift(@$_) + shift(@$_), @$_] };
 
     transition 'REDUCE', to 'TERM',
       on $Reduced;
@@ -37,7 +37,7 @@ subtest 'positive path' => sub {
 
   is \@states, [qw(REDUCE REDUCE REDUCE TERM)], 'expected state progression';
   is \@results, [[1, 2, 3], [3, 3], [6], [6]], 'expected result progression';
-  is $arr, [6], 'expected result';
+  is $arr, [1, 2, 3], 'accumulator preserved';
 };
 
 subtest 'sanity checks' => sub {

@@ -73,7 +73,8 @@ use warnings;
 use parent 'Exporter';
 use Carp;
 use Data::Dumper;
-use List::Util qw(first);
+use List::Util qw(first reduce);
+use Storable qw(dclone);
 use Type::Utils -all;
 use Types::Standard -all;
 use Type::Params qw(compile);
@@ -92,14 +93,13 @@ my $Ident = declare 'Ident', as StrMatch[qr/^[A-Z][_0-9A-Z]*$/i];
 my $State = declare 'State', as Tuple[$Ident, Any];
 my $Type  = declare 'Type',  as InstanceOf['Type::Tiny'];
 my $Code  = declare 'Code',  as CodeRef;
-coerce $Code, from Undef, via { sub {} };
+coerce $Code, from Undef, via { sub { $_ } };
 
+my $Transition = declare 'Transition', as Tuple[$Type, $Code];
 my $Automata = declare 'Automata', as Dict[
-  ready  => Maybe[$Ident],
-  term   => Maybe[$Ident],
-  states => ArrayRef[$Type],
-  table  => Map[Str, Tuple[$Ident, $Code]],
-  map    => Map[$Ident, Map[$Ident, Bool]],
+  ready => Maybe[$Ident],
+  term  => Maybe[$Ident],
+  map   => Map[$Ident, Map[$Ident, $Transition]],
 ];
 
 =head1 EXPORTED SUBROUTINES
@@ -139,56 +139,74 @@ sub machine (&) {
   my $code = shift;
 
   #-----------------------------------------------------------------------------
-  # Define transitions
+  # Define the machine parameters
   #-----------------------------------------------------------------------------
-  my @states;
-  my %table;
   my %map;
-
-  my %fsm = (
-    ready  => undef,
-    term   => undef,
-    states => \@states,
-    table  => \%table,
-    map    => \%map,
-  );
+  my %fsm = (ready => undef, term => undef, map => \%map);
 
   do {
     local $_ = \%fsm;
     $code->();
-    $Automata->assert_valid(\%fsm);
-    validate($fsm{ready}, $fsm{term}, \%map);
+    validate();
   };
 
   #-----------------------------------------------------------------------------
-  # Build function that transitions based on current state
+  # Build the transition engine
   #-----------------------------------------------------------------------------
-  my @param;
-  foreach my $state (@states) {
-    my ($to, $mutate) = @{$table{$state->name}};
-    push @param, $state, sub {
-      debug("%s -> %s: %s", $_->[0], $to, explain($_->[1]));
-      my ($from, $data) = @$_;
-      do { local $_ = $data; $mutate->() };
-      @$_ = ($to, $data);
-    };
+  my @match;
+  foreach my $from (keys %map) {
+    #---------------------------------------------------------------------------
+    # Create type constraints for each "from" state to validate that the
+    # machine's state is consistent after each transition.
+    #---------------------------------------------------------------------------
+    my $union = reduce { $a | $b } map { $_->[0] } values %{$map{$from}};
+    my $next  = Tuple[Enum[keys %{$map{$from}}], $union];
+
+    #---------------------------------------------------------------------------
+    # Create a type constraint that matches each possible initial "from" state.
+    # Use this to build a matching function that calls the appropriate mutator
+    # for that transisiton.
+    #---------------------------------------------------------------------------
+    foreach my $to (keys %{$map{$from}}) {
+      my ($on, $with) = @{$map{$from}{$to}};
+      my $name = sprintf('%s_TO_%s', $from, $to);
+      my $init = declare $name, as Tuple[Enum[$from], $on];
+
+      push @match, $init, sub {
+        debug("%s -> %s: %s", $_->[0], $to, explain($_->[1]));
+
+        my $state = dclone $_->[1];
+
+        if ($on) {
+          do {
+            local $_ = $state;
+            $state = $with->();
+          };
+        }
+
+        my $next_state = [$to, $state];
+        $next->assert_valid($next_state);
+
+        @$_ = @$next_state;
+      };
+    }
   }
 
-  my $fail = sub { croak 'no transitions match ' . explain($_) };
-  my $transform = compile_match_on_type(@param, => $fail);
-  my $terminal = Tuple[Enum[$fsm{term}], Any];
+  my $default   = sub { croak 'no transitions match ' . explain($_) };
+  my $transform = compile_match_on_type(@match, => $default);
+  my $terminal  = Tuple[Enum[$fsm{term}], Any];
 
   #-----------------------------------------------------------------------------
   # Return function that builds a transition engine for the given input
   #-----------------------------------------------------------------------------
   return sub {
     my $state = [$fsm{ready}, shift];
-    my $term;
+    my $done;
 
     sub {
-      return if $term;
+      return if $done;
       $transform->($state);
-      $term = $terminal->check($state);
+      $done = $terminal->check($state);
       wantarray ? @$state : $state->[1];
     };
   };
@@ -219,19 +237,15 @@ sub with     (&;%) { (with => shift, @_) }
 sub transition ($%) {
   assert_in_the_machine();
   state $check = compile($Ident, $Ident, $Type, $Code);
+
   my ($arg, %param) = @_;
   my ($from, $to, $on, $with) = $check->($arg, @param{qw(to on with)});
 
   croak "transition from state $from to $to is already defined"
     if exists $_->{map}{$from}{$to};
 
-  my $name = sprintf('%s_TO_%s', $from, $to);
-  my $init = declare $name, as Tuple[Enum[$from], $on];
-  push @{$_->{states}}, $init;
-
-  $_->{table}{$init->name} = [$to, $with];
   $_->{map}{$from} //= {};
-  $_->{map}{$from}{$to} = 1;
+  $_->{map}{$from}{$to} = [$on, $with];
 }
 
 #-------------------------------------------------------------------------------
@@ -266,6 +280,8 @@ sub explain {
 # guarantees on the return type of transitions.
 #-------------------------------------------------------------------------------
 sub validate {
+  $Automata->assert_valid($_);
+
   croak 'no ready state defined'
     unless $_->{ready};
 
