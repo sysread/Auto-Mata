@@ -3,9 +3,10 @@ use Types::Standard -types;
 use Type::Utils -all;
 use Auto::Mata;
 
-subtest 'positive path' => sub {
-  my $Remaining = declare as ArrayRef[Num], where { @$_ > 1 };
-  my $Reduced   = declare as ArrayRef[Num], where { @$_ == 1 };
+subtest 'basics' => sub {
+  my $PosInt    = declare as Int, where { $_ > 0 };
+  my $Remaining = declare as ArrayRef[$PosInt], where { @$_ > 1 };
+  my $Reduced   = declare as ArrayRef[$PosInt], where { @$_ == 1 };
 
   my $fsm = machine {
     ready 'READY';
@@ -20,6 +21,10 @@ subtest 'positive path' => sub {
 
     transition 'REDUCE', to 'TERM',
       on $Reduced;
+
+    # Purposefully return a result that will not match any other transitions.
+    transition 'READY', to 'UNDEF',  on Undef, with { [1, 2, 'three'] };
+    transition 'UNDEF', to 'REDUCE', on Any;
   };
 
   my $arr = [1, 2, 3];
@@ -27,7 +32,7 @@ subtest 'positive path' => sub {
   my @results;
 
   ok $fsm, 'machine';
-  ok my $adder = $fsm->($arr), 'builder';
+  ok my $adder = $fsm->($arr), 'instance';
 
   while (my ($state, $data) = $adder->()) {
     push @states, $state;
@@ -38,6 +43,13 @@ subtest 'positive path' => sub {
   is \@states, [qw(REDUCE REDUCE REDUCE TERM)], 'expected state progression';
   is \@results, [[1, 2, 3], [3, 3], [6], [6]], 'expected result progression';
   is $arr, [6], 'accumulator contains expected result';
+
+  like dies { $fsm->([1, 2, -5])->() }, qr/no transitions match/, 'expected error on invalid input type';
+
+  my $fails = $fsm->(my $undef_arr);
+  is [$fails->()], ['UNDEF', [1, 2, 'three']], 'setup for failure';
+  $fails->();
+  like dies { $fails->() }, qr/no transitions match/, 'expected error on unexpected transition return type';
 };
 
 subtest 'sanity checks' => sub {

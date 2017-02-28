@@ -151,13 +151,6 @@ sub machine (&) {
     validate();
   };
 
-foreach my $from (keys %map) {
-  print "\nFROM $from\n";
-  foreach my $to (keys %{$map{$from}}) {
-    print " TO $to WHEN $map{$from}{$to}[0]\n";
-  }
-}
-
   #-----------------------------------------------------------------------------
   # Build the transition engine
   #-----------------------------------------------------------------------------
