@@ -50,9 +50,10 @@ version 0.01
       on $Complete;
   };
 
-  my $prog = $fsm->(my $data);
+  my $prog = $fsm->();
+  my $data;
 
-  while ($prog->() ne 'TERM') {
+  while ($prog->($data)) {
     ;
   }
 
@@ -61,17 +62,8 @@ version 0.01
 =head1 DESCRIPTION
 
 Finite state machines (or automata) are a way of modeling the workflow of a
-program as a series of dependent, programmable steps. They are very useful when
-designing software that is guaranteed to behave in a predictable way.
-
-In fact, most (all?) programs boil down to a FSM, with each conditional branch
-defining a new state, although the author of the program may be unaware of this
-and the state may be inspected in an ad hoc manner throughout.
-
-Designing a program as a state machine from the outset is a useful technique to
-consistently create reliable, well-behaved software. It forces the author to
-think through each step in the program workflow, examining and modeling the data
-at each stage during execution of the software.
+program as a series of dependent, programmable steps. State machines are useful
+tools for building software that behaves in a highly predictable manner.
 
 =head1 EXPORTED SUBROUTINES
 
@@ -80,15 +72,24 @@ C<Auto::Mata> is an C<Exporter>. All subroutines are exported by default.
 =head2 machine
 
 Creates a lexical context in which a state machine is defined. Returns a
-function that creates new instances of the defined automata. The automata
-instance itself is a function that performs a single transition per call,
-returning the current state's label in scalar context, the label and state data
-(the reference passed to the builder) in list context, and C<undef> after the
-terminal state has been reached.
+function that creates new instances of the defined automata.
 
-The reference value passed to the builder function holds the machine's
-B<mutable> running state and is matched against L<Type::Tiny> type constraints
-(see L</transition> and L</on>) to determine the next transition state.
+The automata instance is itself a function that performs a single transition
+per call. It accepts a single reference value as input representing the
+program's current state. This value in conjunction with the current state label
+is matched (see L</on>) against the transition table (defined with
+L</transition>) to determine the next state.
+
+Once a match has been made, the action defined for the transition (using
+L</with>) will be executed. During evaluation of the L</with> function, C<$_>
+is a reference to the input value.
+
+The return value is new state's label in scalar context, the label and state in
+list context, and C<undef> after the terminal state has been reached.
+
+Note that the reference used as input may (and likely will have) have been
+modified during the transition. It will always be the reference passed as
+input.
 
   # Define the state machine
   my $builder = machine {
@@ -96,12 +97,13 @@ B<mutable> running state and is matched against L<Type::Tiny> type constraints
   };
 
   # Create an instance of the machine that operates on $state.
-  my $program = $builder->(my $state = [...]);
+  my $program = $builder->();
 
   # Run the program
-  while (my ($token, $data) = $program->()) {
+  my $state = [];
+  while (my ($token, $data) = $program->($state)) {
     print "Current state is $token\n"; # $token == label of current state (e.g. READY)
-    print "State data: @$data\n";      # $data == $state passed to builder
+    print "State data: @$data\n";      # $data == $state input to $program
   }
 
 =head2 ready
@@ -117,18 +119,24 @@ more work.
 
 =head2 transition
 
-These functions define transitions. During a transition, the program will step
-from one state to another. Each transition requires a type constraint that is
-used to match the current state of the program and may optionally include a
-code block that will transform the state reference appropriately for the next
-transition.
+Defines a transition between two states by matching the symbol identifying the
+state at the end of the most recent transition and the input passed into the
+transition engine (see L</machine>) for the transition being performed.
+
+The first argument to C<transition> is the symbol identifying the state at the
+outset of the transition. A L<Type::Tiny> constraint is used to identify the
+expected input using L</on>. When both of these match the current program
+state, the return value of L</with> replaces the current input in place.
+L</with> is permitted to the current input. If L</with> is not specified, the
+input remains unchanged. Once the transition is complete, the symbol supplied
+by L</to> will identify the current program state.
 
 It is an error to have two identical transitions, even with different
 constraints. This is intentional. A transition that matches two different
 states is, in fact, two distinct transitions, and the program should be modeled
 as such in order to prevent errors due to unexpected or improperly checked
-data.  In general, it is a good idea to be as specific as possible with the
-type constraints used to define the initial transition state.
+data. In general, it is a good idea to be as specific as possible with the type
+constraints used to define the initial transition state.
 
 The first transition is always from the "ready" state. The final transition is
 always to the "terminal" state. There may be no transitions from the "terminal"
@@ -149,11 +157,31 @@ transition.
 
 =item with
 
-A code block whose return type is the mutable state used to determine the
-next transition to pefform. Within the code block C<$_> is a reference to
-the program state.
+A code block whose return value is the mutable state used to determine the next
+transition to perform. Within the code block C<$_> is a reference to the
+program state.
 
 =back
+
+  machine {
+    ...
+
+    transition 'INITIAL_STATE', to 'THE_NEXT_STATE',
+      on Dict[command => Str, remember => Bool],
+      with {
+        if ($_->{command} eq 'fnord') {
+          return {command => undef, remember => 0};
+        }
+        else {
+          return {command => undef, remember => 1};
+        }
+      };
+  };
+
+=head1 DEBUGGING
+
+If C<$ENV{DEBUG_AUTOMATA}> is true, helpful debugging messages will be emitted
+to C<STDERR>.
 
 =head1 AUTHOR
 

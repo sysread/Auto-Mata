@@ -41,9 +41,10 @@ package Auto::Mata;
       on $Complete;
   };
 
-  my $prog = $fsm->(my $data);
+  my $prog = $fsm->();
+  my $data;
 
-  while ($prog->() ne 'TERM') {
+  while ($prog->($data)) {
     ;
   }
 
@@ -52,17 +53,8 @@ package Auto::Mata;
 =head1 DESCRIPTION
 
 Finite state machines (or automata) are a way of modeling the workflow of a
-program as a series of dependent, programmable steps. They are very useful when
-designing software that is guaranteed to behave in a predictable way.
-
-In fact, most (all?) programs boil down to a FSM, with each conditional branch
-defining a new state, although the author of the program may be unaware of this
-and the state may be inspected in an ad hoc manner throughout.
-
-Designing a program as a state machine from the outset is a useful technique to
-consistently create reliable, well-behaved software. It forces the author to
-think through each step in the program workflow, examining and modeling the data
-at each stage during execution of the software.
+program as a series of dependent, programmable steps. State machines are useful
+tools for building software that behaves in a highly predictable manner.
 
 =cut
 
@@ -110,15 +102,24 @@ C<Auto::Mata> is an C<Exporter>. All subroutines are exported by default.
 =head2 machine
 
 Creates a lexical context in which a state machine is defined. Returns a
-function that creates new instances of the defined automata. The automata
-instance itself is a function that performs a single transition per call,
-returning the current state's label in scalar context, the label and state data
-(the reference passed to the builder) in list context, and C<undef> after the
-terminal state has been reached.
+function that creates new instances of the defined automata.
 
-The reference value passed to the builder function holds the machine's
-B<mutable> running state and is matched against L<Type::Tiny> type constraints
-(see L</transition> and L</on>) to determine the next transition state.
+The automata instance is itself a function that performs a single transition
+per call. It accepts a single reference value as input representing the
+program's current state. This value in conjunction with the current state label
+is matched (see L</on>) against the transition table (defined with
+L</transition>) to determine the next state.
+
+Once a match has been made, the action defined for the transition (using
+L</with>) will be executed. During evaluation of the L</with> function, C<$_>
+is a reference to the input value.
+
+The return value is new state's label in scalar context, the label and state in
+list context, and C<undef> after the terminal state has been reached.
+
+Note that the reference used as input may (and likely will have) have been
+modified during the transition. It will always be the reference passed as
+input.
 
   # Define the state machine
   my $builder = machine {
@@ -126,12 +127,13 @@ B<mutable> running state and is matched against L<Type::Tiny> type constraints
   };
 
   # Create an instance of the machine that operates on $state.
-  my $program = $builder->(my $state = [...]);
+  my $program = $builder->();
 
   # Run the program
-  while (my ($token, $data) = $program->()) {
+  my $state = [];
+  while (my ($token, $data) = $program->($state)) {
     print "Current state is $token\n"; # $token == label of current state (e.g. READY)
-    print "State data: @$data\n";      # $data == $state passed to builder
+    print "State data: @$data\n";      # $data == $state input to $program
   }
 
 =cut
@@ -185,45 +187,45 @@ sub machine (&) {
 
       push @match, $match, sub {
         debug("%s -> %s: %s", $_->[0], $to, explain($_->[1]));
-        my ($from, $data) = @$_;
+        my ($from, $input) = @$_;
 
-        do { local $_ = $data; $data = $with->() };
+        do { local $_ = $input; $input = $with->() };
 
-        my $state = [$to, $data];
+        my $state = [$to, $input];
 
         if (defined(my $error = $next->validate($state))) {
-          my @msg;
-          push @msg, sprintf('Transition from %s to %s resulted in an invalid state.', $from, $to);
-          push @msg, sprintf('Current state is: %s', explain($state));
-          push @msg, sprintf('Type constraint returned an error: %s', $error);
-          push(@msg, join "\n", map { " -$_" } @{$next->validate_explain($state, 'NEXT STATE')}) if $DEBUG;
+          my @msg = (
+            sprintf('Transition from %s to %s resulted in an invalid state.', $from, $to),
+            sprintf('Current state is: %s', explain($state)),
+            sprintf('Type constraint returned an error: %s', $error),
+          );
+
+          push(@msg, join "\n", map { " -$_" } @{$next->validate_explain($_, 'NEXT STATE')})
+            if $DEBUG;
+
           croak join("\n", @msg);
         }
 
-        @$_ = @$state;
-        return $state;
+        return @$state;
       };
     }
   }
 
-  my $default   = sub { croak 'no transitions match ' . explain($_) };
+  my $default = sub { croak 'no transitions match ' . explain($_) };
   my $transform = compile_match_on_type(@match, => $default);
-  my $terminal  = Tuple[Enum[$fsm{term}], Any];
 
   #-----------------------------------------------------------------------------
   # Return function that builds a transition engine for the given input
   #-----------------------------------------------------------------------------
   return sub {
-    my $data  = \$_[0];
-    my $state = [$fsm{ready}, $_[0]];
+    my $state = $fsm{ready};
     my $done;
 
     sub {
       return if $done;
-      $state = $transform->($state);
-      $done  = $terminal->check($state);
-      $$data = $state->[1];
-      wantarray ? @$state : $state->[0];
+      ($state, $_[0]) = $transform->([$state, $_[0]]);
+      $done = $state eq $fsm{term};
+      wantarray ? ($state, $_[0]) : $state;
     };
   };
 }
@@ -249,18 +251,24 @@ sub with     (&;%) { (with => shift, @_) }
 
 =head2 transition
 
-These functions define transitions. During a transition, the program will step
-from one state to another. Each transition requires a type constraint that is
-used to match the current state of the program and may optionally include a
-code block that will transform the state reference appropriately for the next
-transition.
+Defines a transition between two states by matching the symbol identifying the
+state at the end of the most recent transition and the input passed into the
+transition engine (see L</machine>) for the transition being performed.
+
+The first argument to C<transition> is the symbol identifying the state at the
+outset of the transition. A L<Type::Tiny> constraint is used to identify the
+expected input using L</on>. When both of these match the current program
+state, the return value of L</with> replaces the current input in place.
+L</with> is permitted to the current input. If L</with> is not specified, the
+input remains unchanged. Once the transition is complete, the symbol supplied
+by L</to> will identify the current program state.
 
 It is an error to have two identical transitions, even with different
 constraints. This is intentional. A transition that matches two different
 states is, in fact, two distinct transitions, and the program should be modeled
 as such in order to prevent errors due to unexpected or improperly checked
-data.  In general, it is a good idea to be as specific as possible with the
-type constraints used to define the initial transition state.
+data. In general, it is a good idea to be as specific as possible with the type
+constraints used to define the initial transition state.
 
 The first transition is always from the "ready" state. The final transition is
 always to the "terminal" state. There may be no transitions from the "terminal"
@@ -281,11 +289,26 @@ transition.
 
 =item with
 
-A code block whose return type is the mutable state used to determine the
-next transition to pefform. Within the code block C<$_> is a reference to
-the program state.
+A code block whose return value is the mutable state used to determine the next
+transition to perform. Within the code block C<$_> is a reference to the
+program state.
 
 =back
+
+  machine {
+    ...
+
+    transition 'INITIAL_STATE', to 'THE_NEXT_STATE',
+      on Dict[command => Str, remember => Bool],
+      with {
+        if ($_->{command} eq 'fnord') {
+          return {command => undef, remember => 0};
+        }
+        else {
+          return {command => undef, remember => 1};
+        }
+      };
+  };
 
 =cut
 
@@ -320,13 +343,13 @@ sub assert_in_the_machine {
 }
 
 #-------------------------------------------------------------------------------
-# Outputs a debug message preceded by 'DEBUG> ' when $DEBUG is true. Behaves
-# like `printf` in all other respects.
+# Emits a debug message preceded by 'DEBUG> ' to STDERR when $DEBUG is true.
+# Behaves like `warn(sprintf(@_))` in all other respects.
 #-------------------------------------------------------------------------------
 sub debug {
   return unless $DEBUG;
   my ($msg, @args) = @_;
-  printf("DEBUG> $msg\n", @args);
+  warn sprintf("# DEBUG> $msg\n", @args);
 }
 
 #-------------------------------------------------------------------------------
@@ -351,6 +374,9 @@ sub validate {
 
   croak 'no terminal state defined'
     unless $_->{term};
+
+  croak 'terminal state and ready state are identical'
+    if $_->{ready} eq $_->{term};
 
   croak 'no transitions defined'
     unless keys %{$_->{map}};
@@ -378,5 +404,12 @@ sub validate {
   croak 'no transition defined to terminal state'
     unless $is_terminated;
 }
+
+=head1 DEBUGGING
+
+If C<$ENV{DEBUG_AUTOMATA}> is true, helpful debugging messages will be emitted
+to C<STDERR>.
+
+=cut
 
 1;

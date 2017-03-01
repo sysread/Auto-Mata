@@ -36,9 +36,10 @@ my $fsm = machine {
     on $Complete;
 };
 
-my $prog = $fsm->(my $data);
+my $prog = $fsm->();
+my $data;
 
-while ($prog->() ne 'TERM') {
+while ($prog->($data)) {
   ;
 }
 

@@ -1,5 +1,6 @@
 use strict;
 use warnings;
+use Data::Dumper;
 use List::Util qw(reduce);
 use Types::Standard -all;
 use Type::Utils -all;
@@ -17,7 +18,7 @@ sub welcome { print "\nWelcome to the example calculator!\n\n" }
 sub goodbye { print "\nThanks for playing! Goodbye!\n\n" }
 
 sub error {
-  my $invalid = $_->[0];
+  my $invalid = shift;
   if (exists $OP{$invalid}) {
     print "At least two terms are required before an operator may be applied.\n\n";
   } else {
@@ -26,7 +27,7 @@ sub error {
 }
 
 sub input {
-  my @terms = reverse @$_;
+  my @terms = reverse @_;
   print "terms> @terms\n" if @terms;
   print "input> ";
 
@@ -35,49 +36,64 @@ sub input {
 
   ($value) = $value =~ /\s*(.*)\s*$/;
   reverse split /\s+/, $value;
+
+  return $value, @_;
 }
 
 sub solve {
-  my ($op, @terms) = @$_;
+  my ($op, @terms) = @_;
   @terms = reverse @terms;
   my $n  = reduce { $OP{$op}->($a, $b) } @terms;
   my $eq = join " $op ", @terms;
   print "  $eq = $n\n\n";
 }
 
+my @exit  = qw(quit q exit x);
+my @clear = qw(clear cl c);
+
 my $Term       = declare 'Term',       as Num;
 my $Op         = declare 'Op',         as Enum[keys %OP];
-my $Exit       = declare 'Exit',       as Enum[qw(quit q exit x)];
-my $Input      = declare 'Input',      as $Term | $Op | $Exit;
-my $Stack      = declare 'Stack',      as ArrayRef[$Input];
+my $Exit       = declare 'Exit',       as Enum[@exit];
+my $Clear      = declare 'Clear',      as Enum[@clear];
+my $Cmd        = declare 'Cmd',        as Enum[@exit, @clear];
+my $Input      = declare 'Input',      as $Term | $Op | $Cmd;
 my $Incomplete = declare 'Incomplete', as ArrayRef[$Term];
 my $Equation   = declare 'Equation',   as Tuple[$Op, $Term, $Term, slurpy ArrayRef[$Term]];
-my $ExitCmd    = declare 'ExitCmd',    as Tuple[$Exit, slurpy ArrayRef[$Term]];
-my $Invalid    = declare 'Invalid',    as Tuple[~$Input, slurpy ArrayRef[Any]];
+my $Command    = declare 'Command',    as Tuple[$Cmd,   slurpy ArrayRef[$Term]];
+my $ExitCmd    = declare 'ExitCmd',    as Tuple[$Exit,  slurpy ArrayRef[$Term]];
+my $ClearCmd   = declare 'ClearCmd',   as Tuple[$Clear, slurpy ArrayRef[$Term]];
+my $Invalid    = declare 'Invalid',    as ~$Incomplete & ~$Equation & ~$Command;
 
 my $builder = machine {
   ready 'READY';
   terminal 'TERM';
 
-  transition 'READY', to 'INPUT',
+  transition 'READY', to 'START',
     on $Incomplete,
     with { welcome; [] };
 
+  transition 'START', to 'INPUT',
+    on $Incomplete;
+
   transition 'INPUT', to 'INPUT',
     on $Incomplete,
-    with { unshift @$_, input; $_ };
+    with { [input(@$_)] };
 
   transition 'INPUT', to 'ANSWER',
     on $Equation,
-    with { solve; [] };
+    with { solve(@$_); [] };
 
   transition 'INPUT', to 'ERROR',
     on $Invalid,
-    with { error; $_ };
+    with { error($_->[0]); $_ };
 
   transition 'ERROR', to 'INPUT',
     on $Invalid,
-    with { shift @$_; $_ };
+    with { my ($bad, @stack) = @$_; \@stack };
+
+  transition 'INPUT', to 'START',
+    on $ClearCmd,
+    with { [] };
 
   transition 'INPUT', to 'TERM',
     on $ExitCmd,
@@ -87,11 +103,9 @@ my $builder = machine {
     on $Incomplete;
 };
 
+my $fsm = $builder->();
 my $stack = [];
-my $fsm = $builder->($stack);
 
-my $backstop = 50;
-while ($fsm->()) {
-  die "backstop reached" if --$backstop == 0;
+while ($fsm->($stack)) {
   ;
 }

@@ -17,7 +17,7 @@ subtest 'basics' => sub {
 
     transition 'REDUCE', to 'REDUCE',
       on $Remaining,
-      with { [shift(@$_) + shift(@$_), @$_] };
+      with { [(shift(@$_) + shift(@$_)), @$_] };
 
     transition 'REDUCE', to 'TERM',
       on $Reduced;
@@ -27,14 +27,15 @@ subtest 'basics' => sub {
     transition 'UNDEF', to 'REDUCE', on Any;
   };
 
+  ok $fsm, 'machine';
+  ok my $adder = $fsm->(), 'instance';
+
   my $arr = [1, 2, 3];
   my @states;
   my @results;
 
-  ok $fsm, 'machine';
-  ok my $adder = $fsm->($arr), 'instance';
-
-  while (my ($state, $data) = $adder->()) {
+  while (my ($state, $data) = $adder->($arr)) {
+    is $data, $arr, 'returns reference to input';
     push @states, $state;
     push @results, [@$data];
     die "backstop reached" if @states > 10;
@@ -44,12 +45,13 @@ subtest 'basics' => sub {
   is \@results, [[1, 2, 3], [3, 3], [6], [6]], 'expected result progression';
   is $arr, [6], 'accumulator contains expected result';
 
-  like dies { $fsm->([1, 2, -5])->() }, qr/no transitions match/, 'expected error on invalid input type';
+  like dies { $fsm->()->([1, 2, -5]) }, qr/no transitions match/, 'expected error on invalid input type';
 
-  my $fails = $fsm->(my $undef_arr);
-  is [$fails->()], ['UNDEF', [1, 2, 'three']], 'setup for failure';
-  $fails->();
-  like dies { $fails->() }, qr/no transitions match/, 'expected error on unexpected transition return type';
+  my $fails = $fsm->();
+  my $undef;
+  is [$fails->($undef)], ['UNDEF', [1, 2, 'three']], 'setup for failure 1';
+  is [$fails->($undef)], ['REDUCE', [1, 2, 'three']], 'setup for failure 2';
+  like dies { $fails->($undef) }, qr/no transitions match/, 'expected error on match failure';
 };
 
 subtest 'sanity checks' => sub {
@@ -59,6 +61,7 @@ subtest 'sanity checks' => sub {
 
   like dies { machine { } }, qr/no ready state defined/, 'missing ready state';
   like dies { machine { ready 'READY' } }, qr/no terminal state defined/, 'missing terminal state';
+  like dies { machine { ready 'READY'; terminal 'READY' } }, qr/terminal state and ready state are identical/, 'terminal eq ready state';
   like dies { machine { ready 'READY'; terminal 'TERM' } }, qr/no transitions defined/, 'missing transitions';
 
   like dies {
