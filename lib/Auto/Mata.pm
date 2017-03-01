@@ -1,5 +1,5 @@
 package Auto::Mata;
-# ABSTRACT: State machine grease
+# ABSTRACT: A simple, reliable finite state machine
 
 =head1 SYNOPSIS
 
