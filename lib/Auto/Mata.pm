@@ -189,7 +189,7 @@ sub machine (&) {
 
       push @match, $match, sub {
         my ($from, $input) = @$_;
-        debug('%s -> %s: %s', $from, $to, explain($input));
+        debug('%s -> %s', $from, $to);
 
         do { local $_ = $input; $input = $with->() };
         my $state = [$to, $input];

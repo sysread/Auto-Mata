@@ -1,4 +1,6 @@
 {{$NEXT}}
+- Debugging no longer emits a serialized version of the state, which was
+  incredibly annoying for debugging with complex state data
 
 0.02 2017-03-02
 - Fixed: final state not correctly validated if next state may be terminal
