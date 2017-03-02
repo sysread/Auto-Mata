@@ -87,8 +87,13 @@ my $State = declare 'State', as Tuple[$Ident, Any];
 my $Type  = declare 'Type',  as InstanceOf['Type::Tiny'];
 my $Code  = declare 'Code',  as CodeRef;
 coerce $Code, from Undef, via { sub { $_ } };
+coerce $Type, from Undef, via { Any };
 
-my $Transition = declare 'Transition', as Tuple[$Type, $Type, $Code];
+my $Transition = declare 'Transition', as Dict[
+  initial   => $Type,
+  transform => $Code,
+];
+
 my $Automata = declare 'Automata', as Dict[
   ready => Maybe[$Ident],
   term  => Maybe[$Ident],
@@ -153,6 +158,8 @@ sub machine (&) {
     validate();
   };
 
+  my $terminal = declare 'Terminal', as Tuple[Enum[$fsm{term}], Any];
+
   #-----------------------------------------------------------------------------
   # Build the transition engine
   #-----------------------------------------------------------------------------
@@ -162,19 +169,15 @@ sub machine (&) {
     # Create type constraints for each "from" state to validate that the
     # machine's state is consistent after each transition.
     #---------------------------------------------------------------------------
-    my @next_types;
-    foreach my $to (keys %{$map{$from}}) {         # $to = each state $from can transition to
-      foreach my $next (keys %{$map{$to}}) {       # $next = each state $to can transition to
-        if ($next eq $fsm{term}) {                 # Termination matches any result since there
-          push @next_types, Any;                   #   are no further states to validate against
-        } else {
-          push @next_types, $map{$to}{$next}->[0]; # Initial state constraints for each $next
-        }
-      }
+    my @next;
+    foreach my $to (keys %{$map{$from}}) {
+      push @next, $to eq $fsm{term}
+        ? $terminal
+        : map { $map{$to}{$_}{initial} } keys %{$map{$to}};
     }
 
-    my $next = declare "Next_State_After_$from", as @next_types
-      ? reduce { $a | $b } @next_types
+    my $next = declare "${from}_FINAL", as @next
+      ? reduce { $a | $b } @next
       : Any;
 
     #---------------------------------------------------------------------------
@@ -183,25 +186,26 @@ sub machine (&) {
     # for that transisiton.
     #---------------------------------------------------------------------------
     foreach my $to (keys %{$map{$from}}) {
-      my ($match, $on, $with) = @{$map{$from}{$to}};
+      my $match = $map{$from}{$to}{initial};
+      my $with  = $map{$from}{$to}{transform};
 
       push @match, $match, sub {
-        debug("%s -> %s: %s", $_->[0], $to, explain($_->[1]));
         my ($from, $input) = @$_;
+        debug('%s -> %s: %s', $from, $to, explain($input));
 
         do { local $_ = $input; $input = $with->() };
-
         my $state = [$to, $input];
 
         if (defined(my $error = $next->validate($state))) {
           my @msg = (
-            sprintf('Transition from %s to %s resulted in an invalid state.', $from, $to),
-            sprintf('Current state is: %s', explain($state)),
-            sprintf('Type constraint returned an error: %s', $error),
+            sprintf('Transition from %s to %s produced an invalid state.', $from, $to),
+            sprintf('Attempted to move from %s to %s', explain($_), explain($state)),
+            sprintf($error),
           );
 
-          push(@msg, join "\n", map { " -$_" } @{$next->validate_explain($_, 'NEXT STATE')})
-            if $DEBUG;
+          if (my $details = $next->validate_explain($state, 'FINAL_STATE')) {
+            debug(" -$_") foreach @$details;
+          }
 
           croak join("\n", @msg);
         }
@@ -322,11 +326,15 @@ sub transition ($%) {
   croak "transition from state $from to $to is already defined"
     if exists $_->{map}{$from}{$to};
 
-  my $name  = sprintf('%s_to_%s', $from, $to);
-  my $match = declare $name, as Tuple[Enum[$from], $on];
+  my $state   = declare "STATE_${from}", as Enum[$from];
+  my $initial = declare "${from}_TO_${to}_INITIAL", as Tuple[$state, $on];
 
   $_->{map}{$from} //= {};
-  $_->{map}{$from}{$to} = [$match, $on, $with];
+
+  $_->{map}{$from}{$to} = {
+    initial   => $initial,
+    transform => $with,
+  };
 }
 
 #-------------------------------------------------------------------------------

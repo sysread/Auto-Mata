@@ -4,27 +4,22 @@ use Type::Utils -all;
 use Auto::Mata;
 
 subtest 'basics' => sub {
-  my $PosInt    = declare as Int, where { $_ > 0 };
-  my $Remaining = declare as ArrayRef[$PosInt], where { @$_ > 1 };
-  my $Reduced   = declare as ArrayRef[$PosInt], where { @$_ == 1 };
+  my $PosInt      = declare 'PosInt',      as Int, where { $_ > 0 };
+  my $PosIntArray = declare 'PosIntArray', as ArrayRef[$PosInt];
+  my $Remaining   = declare 'NotReduced',  as $PosIntArray, where { @$_ > 1 };
+  my $Reduced     = declare 'Reduced',     as $PosIntArray, where { @$_ == 1 };
+
+  my $add_reduce = sub {
+    my ($x, $y, @rem) = @{$_[0]};
+    return [$x + $y, @rem];
+  };
 
   my $fsm = machine {
-    ready 'READY';
-    terminal 'TERM';
-
-    transition 'READY', to 'REDUCE',
-      on $Remaining;
-
-    transition 'REDUCE', to 'REDUCE',
-      on $Remaining,
-      with { [(shift(@$_) + shift(@$_)), @$_] };
-
-    transition 'REDUCE', to 'TERM',
-      on $Reduced;
-
-    # Purposefully return a result that will not match any other transitions.
-    transition 'READY', to 'UNDEF',  on Undef, with { [1, 2, 'three'] };
-    transition 'UNDEF', to 'REDUCE', on Any;
+    ready      'READY';
+    terminal   'TERM';
+    transition 'READY', to 'REDUCE', on $Remaining;
+    transition 'REDUCE', to 'REDUCE', on $Remaining, with { $add_reduce->($_) };
+    transition 'REDUCE', to 'TERM', on $Reduced;
   };
 
   ok $fsm, 'machine';
@@ -46,12 +41,21 @@ subtest 'basics' => sub {
   is $arr, [6], 'accumulator contains expected result';
 
   like dies { $fsm->()->([1, 2, -5]) }, qr/no transitions match/, 'expected error on invalid input type';
+};
+
+subtest 'invalid state after transition' => sub {
+  my $fsm = machine {
+    ready      'READY';
+    terminal   'TERM';
+    transition 'READY', to 'FOO',  on Undef, with { ['foo'] };
+    transition 'FOO',   to 'BAR',  on Tuple[Enum['foo']];
+    transition 'BAR',   to 'TERM', on Tuple[Enum['bar']];
+  };
 
   my $fails = $fsm->();
-  my $undef;
-  is [$fails->($undef)], ['UNDEF', [1, 2, 'three']], 'setup for failure 1';
-  is [$fails->($undef)], ['REDUCE', [1, 2, 'three']], 'setup for failure 2';
-  like dies { $fails->($undef) }, qr/no transitions match/, 'expected error on match failure';
+  $fails->(my $state);
+
+  like dies { $fails->($state) }, qr/produced an invalid state/, 'expected error';
 };
 
 subtest 'sanity checks' => sub {
