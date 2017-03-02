@@ -1,4 +1,6 @@
 {{$NEXT}}
+
+0.02 2017-03-02
 - Fixed: final state not correctly validated if next state may be terminal
 - More thorough unit tests
 
