@@ -3,6 +3,12 @@ use Types::Standard -types;
 use Type::Utils -all;
 use Auto::Mata;
 
+subtest 'utils' => sub {
+  is Auto::Mata::explain(['foo', 42, {bar => "baz"}]), "['foo',42,{'bar' => 'baz'}]", 'explain';
+  ok no_warnings { Auto::Mata::debug('foo') }, 'debug w/o DEBUG_AUTOMATA';
+  is warnings { local $Auto::Mata::DEBUG = 1; Auto::Mata::debug('test is %s', 'bar') }, ["# DEBUG> test is bar\n"], 'debug w/ DEBUG_AUTOMATA';
+};
+
 subtest 'basics' => sub {
   my $PosInt      = declare 'PosInt',      as Int, where { $_ > 0 };
   my $PosIntArray = declare 'PosIntArray', as ArrayRef[$PosInt];
@@ -20,6 +26,10 @@ subtest 'basics' => sub {
     transition 'READY', to 'REDUCE', on $Remaining;
     transition 'REDUCE', to 'REDUCE', on $Remaining, with { $add_reduce->($_) };
     transition 'REDUCE', to 'TERM', on $Reduced;
+
+    like dies { transition 'REDUCE', to 'TERM' },
+      qr/transition from state REDUCE to TERM is already defined/,
+      'expected error on duplicate definitions';
   };
 
   ok $fsm, 'machine';
@@ -59,45 +69,86 @@ subtest 'invalid state after transition' => sub {
 };
 
 subtest 'sanity checks' => sub {
-  like dies { transition 'READY' }, qr/cannot be called outside a state machine definition block/, 'transition outside the machine';
-  like dies { ready 'READY' }, qr/cannot be called outside a state machine definition block/, 'ready outside the machine';
-  like dies { terminal 'TERM' }, qr/cannot be called outside a state machine definition block/, 'terminal outside the machine';
+  like dies { transition 'READY' },
+    qr/cannot be called outside a state machine definition block/,
+    'transition outside the machine';
 
-  like dies { machine { } }, qr/no ready state defined/, 'missing ready state';
-  like dies { machine { ready 'READY' } }, qr/no terminal state defined/, 'missing terminal state';
-  like dies { machine { ready 'READY'; terminal 'READY' } }, qr/terminal state and ready state are identical/, 'terminal eq ready state';
-  like dies { machine { ready 'READY'; terminal 'TERM' } }, qr/no transitions defined/, 'missing transitions';
+  like dies { ready 'READY' },
+    qr/cannot be called outside a state machine definition block/,
+    'ready outside the machine';
 
-  like dies {
-    machine {
-      ready 'READY'; terminal 'TERM';
-      transition 'FOO', to 'TERM', on Any;
-    };
-  }, qr/no transition defined for ready state/, 'no ready transition';
+  like dies { terminal 'TERM' },
+    qr/cannot be called outside a state machine definition block/,
+    'terminal outside the machine';
 
-  like dies {
-    machine {
-      ready 'READY'; terminal 'TERM';
-      transition 'READY', to 'FOO', on Any;
-      transition 'FOO', to 'READY', on Any;
-    };
-  }, qr/no transition defined to terminal state/, 'no terminal transition';
+  like dies { machine { } },
+    qr/no ready state defined/,
+    'missing ready state';
 
-  like dies {
-    machine {
-      ready 'READY'; terminal 'TERM';
-      transition 'READY', to 'FOO', on Any;
-    };
-  }, qr/no subsequent states are reachable from FOO/, 'incomplete (dangling state)';
+  like dies { machine { ready 'READY' } },
+    qr/no terminal state defined/,
+    'missing terminal state';
+
+  like dies { machine { ready 'READY'; terminal 'READY' } },
+    qr/terminal state and ready state are identical/,
+    'terminal eq ready state';
+
+  like dies { machine { ready 'READY'; terminal 'TERM' } },
+    qr/no transitions defined/,
+    'missing transitions';
 
   like dies {
-    machine {
-      ready 'READY'; terminal 'TERM';
-      transition 'READY', to 'FOO', on Any;
-      transition 'FOO', to 'TERM', on Any;
-      transition 'TERM', to 'READY', on Any;
-    };
-  }, qr/invalid transition from terminal state detected/, 'invalid terminal state transition';
+      machine {
+        ready 'READY'; terminal 'TERM';
+        transition 'FOO', to 'TERM', on Any;
+      };
+    },
+    qr/no transition defined for ready state/,
+    'no ready transition';
+
+  like dies {
+      machine {
+        ready 'READY'; terminal 'TERM';
+        transition 'READY', to 'FOO', on Any;
+        transition 'FOO', to 'READY', on Any;
+      };
+    },
+    qr/no transition defined to terminal state/,
+    'no terminal transition';
+
+  like dies {
+      machine {
+        ready 'READY'; terminal 'TERM';
+        transition 'READY', to 'FOO', on Any;
+      };
+    },
+    qr/no subsequent states are reachable from FOO/,
+    'incomplete (dangling state)';
+
+  like dies {
+      machine {
+        ready 'READY'; terminal 'TERM';
+        transition 'READY', to 'FOO', on Any;
+        transition 'FOO', to 'TERM', on Any;
+        transition 'TERM', to 'READY', on Any;
+      };
+    },
+    qr/invalid transition from terminal state detected/,
+    'invalid terminal state transition';
+
+  like dies { machine { local $_ = 'foo'; ready 'READY' } },
+    qr/invalid machine definition/,
+    '$_ is shadowed';
+
+  like dies {
+      machine {
+        ready 'READY'; terminal 'TERM';
+        transition 'READY', to 'TERM';
+        $_->{foo} = 'bar';
+      };
+    },
+    qr/did not pass type constraint "Automata"/,
+    'type validation failure';
 };
 
 done_testing;

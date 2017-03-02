@@ -176,9 +176,7 @@ sub machine (&) {
         : map { $map{$to}{$_}{initial} } keys %{$map{$to}};
     }
 
-    my $next = declare "${from}_FINAL", as @next
-      ? reduce { $a | $b } @next
-      : Any;
+    my $next = declare "${from}_FINAL", as reduce { $a | $b } @next;
 
     #---------------------------------------------------------------------------
     # Create a type constraint that matches each possible initial "from" state.
@@ -197,17 +195,12 @@ sub machine (&) {
         my $state = [$to, $input];
 
         if (defined(my $error = $next->validate($state))) {
-          my @msg = (
+          debug(" -$_") foreach @{$next->validate_explain($state, 'FINAL_STATE')};
+
+          croak join "\n",
             sprintf('Transition from %s to %s produced an invalid state.', $from, $to),
             sprintf('Attempted to move from %s to %s', explain($_), explain($state)),
-            sprintf($error),
-          );
-
-          if (my $details = $next->validate_explain($state, 'FINAL_STATE')) {
-            debug(" -$_") foreach @$details;
-          }
-
-          croak join("\n", @msg);
+            sprintf($error);
         }
 
         return @$state;
@@ -345,8 +338,8 @@ sub assert_in_the_machine {
   croak 'cannot be called outside a state machine definition block' unless $_;
 
   unless (!defined(my $msg = $Automata->validate_explain($_, '$_'))) {
-    debug('Invalid machine state detected: %s', join("\n", map {" -$_"} @$msg)) if $msg;
-    croak 'Invalid machine definition';
+    debug('Invalid machine state detected: %s', join("\n", map {" -$_"} @$msg));
+    croak 'invalid machine definition';
   }
 }
 
