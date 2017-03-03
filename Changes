@@ -1,4 +1,5 @@
 {{$NEXT}}
+- Fixed uncheck dereference
 
 0.04 2017-03-03
 - Forgot to export term :/
