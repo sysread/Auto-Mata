@@ -44,7 +44,7 @@ package Auto::Mata;
   my $prog = $fsm->();
   my $data;
 
-  while ($prog->($data)) {
+  while (my ($state, $output) = $prog->($data)) {
     ;
   }
 
@@ -52,9 +52,30 @@ package Auto::Mata;
 
 =head1 DESCRIPTION
 
-Finite state machines (or automata) are a way of modeling the workflow of a
-program as a series of dependent, programmable steps. State machines are useful
-tools for building software that behaves in a highly predictable manner.
+Finite state machines (or automata) are a technique for modeling the workflow
+of a program as a series of dependent, programmable steps. State machines are
+useful tools for building software whose behavior can be predicted with a high
+degree of confidence.
+
+Using a state machine to implement a program helps to ensure determinacy, where
+the program state is known at all times. Designing software this way leads to
+greater accuracy and testability.
+
+=head1 WHAT IS A STATE MACHINE
+
+A program can be described as a set of discrete I<states>. Each state is
+defined by the existence or value of a variable, the presence of a file, etc.
+A state machine replaces the if/else clauses typically used to inspect and
+branch based on run-time conditions.
+
+Rather than performing ad hoc tests using if/else conditions, the program is
+instead described as a set of I<transitions> which move the program from an
+initial state to a final state. The state machine begins in the "ready" state.
+The initial state is described using an identifier and a type constraint (see
+L<Type::Tiny> and L<Types::Standard>).  When input matches the transition's
+initial state, the transition step is executed, after which the new initial
+state is the final state described in the transition. This proceeds until the
+"terminal" state is reached.
 
 =cut
 
@@ -237,10 +258,15 @@ Sets the name given to the "terminal" state. This is the final state held by
 the state machine. Once in this state, the machine will cease to perform any
 more work.
 
+=head2 term
+
+Alias for L</terminal>.
+
 =cut
 
 sub ready    ($)   { assert_in_the_machine(); $_->{ready} = shift }
 sub terminal ($)   { assert_in_the_machine(); $_->{term}  = shift }
+sub term     ($)   { goto \&terminal }
 sub to       ($;%) { (to   => shift, @_) }
 sub on       ($;%) { (on   => shift, @_) }
 sub with     (&;%) { (with => shift, @_) }
@@ -369,6 +395,8 @@ sub explain {
 # guarantees on the return type of transitions.
 #-------------------------------------------------------------------------------
 sub validate {
+  assert_in_the_machine();
+
   $Automata->assert_valid($_);
 
   croak 'no ready state defined'

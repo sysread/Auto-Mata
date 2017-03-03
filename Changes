@@ -1,6 +1,8 @@
 {{$NEXT}}
 - Debugging no longer emits a serialized version of the state, which was
   incredibly annoying for debugging with complex state data
+- Made a few minor changes to support the poor folks still using perl 5.8
+- Added alias term for terminal
 
 0.02 2017-03-02
 - Fixed: final state not correctly validated if next state may be terminal

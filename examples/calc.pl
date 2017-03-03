@@ -1,6 +1,5 @@
 use strict;
 use warnings;
-use Data::Dumper;
 use List::Util qw(reduce);
 use Types::Standard -all;
 use Type::Utils -all;
