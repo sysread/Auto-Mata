@@ -1,4 +1,6 @@
 {{$NEXT}}
+
+0.05 2017-03-03
 - Fixed uncheck dereference
 - Greatly improved validation of post-transition state
 
