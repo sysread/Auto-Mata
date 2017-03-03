@@ -216,7 +216,9 @@ sub machine (&) {
         my $state = [$to, $input];
 
         if (defined(my $error = $next->validate($state))) {
-          debug(" -$_") foreach @{$next->validate_explain($state, 'FINAL_STATE')};
+          if (my $explain = $next->validate_explain($state, 'FINAL_STATE')) {
+            debug($_) foreach @$explain;
+          }
 
           croak join "\n",
             sprintf('Transition from %s to %s produced an invalid state.', $from, $to),
