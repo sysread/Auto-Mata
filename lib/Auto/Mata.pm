@@ -397,8 +397,6 @@ sub explain {
 sub validate {
   assert_in_the_machine();
 
-  $Automata->assert_valid($_);
-
   croak 'no ready state defined'
     unless $_->{ready};
 

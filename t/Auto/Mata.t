@@ -147,7 +147,7 @@ subtest 'sanity checks' => sub {
         $_->{foo} = 'bar';
       };
     },
-    qr/did not pass type constraint "Automata"/,
+    qr/invalid machine definition/,
     'type validation failure';
 };
 
