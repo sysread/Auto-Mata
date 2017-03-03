@@ -94,6 +94,7 @@ our @EXPORT = qw(
   machine
   ready
   terminal
+  term
   transition
   to
   on
