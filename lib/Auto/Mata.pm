@@ -58,7 +58,6 @@ tools for building software that behaves in a highly predictable manner.
 
 =cut
 
-use v5.10;
 use strict;
 use warnings;
 use parent 'Exporter';
@@ -309,12 +308,14 @@ program state.
 
 =cut
 
+my $_transition_args;
+
 sub transition ($%) {
   assert_in_the_machine();
-  state $check = compile($Ident, $Ident, $Type, $Code);
+  $_transition_args ||= compile($Ident, $Ident, $Type, $Code);
 
   my ($arg, %param) = @_;
-  my ($from, $to, $on, $with) = $check->($arg, @param{qw(to on with)});
+  my ($from, $to, $on, $with) = $_transition_args->($arg, @param{qw(to on with)});
 
   croak "transition from state $from to $to is already defined"
     if exists $_->{map}{$from}{$to};
@@ -322,7 +323,7 @@ sub transition ($%) {
   my $state   = declare "STATE_${from}", as Enum[$from];
   my $initial = declare "${from}_TO_${to}_INITIAL", as Tuple[$state, $on];
 
-  $_->{map}{$from} //= {};
+  $_->{map}{$from} ||= {};
 
   $_->{map}{$from}{$to} = {
     initial   => $initial,
