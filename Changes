@@ -1,5 +1,6 @@
 {{$NEXT}}
 - Fixed uncheck dereference
+- Greatly improved validation of post-transition state
 
 0.04 2017-03-03
 - Forgot to export term :/

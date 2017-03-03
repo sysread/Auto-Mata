@@ -5,7 +5,7 @@ use Auto::Mata;
 
 subtest 'utils' => sub {
   is Auto::Mata::explain(['foo', 42, {bar => "baz"}]), "['foo',42,{'bar' => 'baz'}]", 'explain';
-  ok no_warnings { Auto::Mata::debug('foo') }, 'debug w/o DEBUG_AUTOMATA';
+  ok no_warnings { local $Auto::Mata::DEBUG = 0; Auto::Mata::debug('foo') }, 'debug w/o DEBUG_AUTOMATA';
   is warnings { local $Auto::Mata::DEBUG = 1; Auto::Mata::debug('test is %s', 'bar') }, ["# DEBUG> test is bar\n"], 'debug w/ DEBUG_AUTOMATA';
 };
 
@@ -56,7 +56,7 @@ subtest 'basics' => sub {
 subtest 'invalid state after transition' => sub {
   my $fsm = machine {
     ready      'READY';
-    terminal   'TERM';
+    term       'TERM';
     transition 'READY', to 'FOO',  on Undef, with { ['foo'] };
     transition 'FOO',   to 'BAR',  on Tuple[Enum['foo']];
     transition 'BAR',   to 'TERM', on Tuple[Enum['bar']];

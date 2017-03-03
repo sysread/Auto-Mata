@@ -179,7 +179,13 @@ sub machine (&) {
     validate();
   };
 
-  my $terminal = declare 'Terminal', as Tuple[Enum[$fsm{term}], Any];
+  my $terminal = declare $fsm{term}, as Tuple[Enum[$fsm{term}], Any];
+  my %state    = ($fsm{term} => $terminal);
+
+  foreach my $from (keys %map) {
+    my @next = map { $map{$from}{$_}{initial} } keys %{$map{$from}};
+    $state{$from} = declare $from, as reduce { $a | $b } @next;
+  }
 
   #-----------------------------------------------------------------------------
   # Build the transition engine
@@ -187,36 +193,24 @@ sub machine (&) {
   my @match;
   foreach my $from (keys %map) {
     #---------------------------------------------------------------------------
-    # Create type constraints for each "from" state to validate that the
-    # machine's state is consistent after each transition.
-    #---------------------------------------------------------------------------
-    my @next;
-    foreach my $to (keys %{$map{$from}}) {
-      push @next, $to eq $fsm{term}
-        ? $terminal
-        : map { $map{$to}{$_}{initial} } keys %{$map{$to}};
-    }
-
-    my $next = declare "${from}_FINAL", as reduce { $a | $b } @next;
-
-    #---------------------------------------------------------------------------
     # Create a type constraint that matches each possible initial "from" state.
     # Use this to build a matching function that calls the appropriate mutator
     # for that transisiton.
     #---------------------------------------------------------------------------
     foreach my $to (keys %{$map{$from}}) {
-      my $match = $map{$from}{$to}{initial};
-      my $with  = $map{$from}{$to}{transform};
+      my $final   = $state{$to};
+      my $initial = $map{$from}{$to}{initial};
+      my $with    = $map{$from}{$to}{transform};
 
-      push @match, $match, sub {
+      push @match, $initial, sub {
         my ($from, $input) = @$_;
         debug('%s -> %s', $from, $to);
 
         do { local $_ = $input; $input = $with->() };
         my $state = [$to, $input];
 
-        if (defined(my $error = $next->validate($state))) {
-          if (my $explain = $next->validate_explain($state, 'FINAL_STATE')) {
+        if (defined(my $error = $final->validate($state))) {
+          if (my $explain = $final->validate_explain($state, 'FINAL_STATE')) {
             debug($_) foreach @$explain;
           }
 
@@ -349,13 +343,12 @@ sub transition ($%) {
   croak "transition from state $from to $to is already defined"
     if exists $_->{map}{$from}{$to};
 
-  my $state   = declare "STATE_${from}", as Enum[$from];
-  my $initial = declare "${from}_TO_${to}_INITIAL", as Tuple[$state, $on];
+  my $init = declare "${from}_TO_${to}_INITIAL", as Tuple[Enum[$from], $on];
 
   $_->{map}{$from} ||= {};
 
   $_->{map}{$from}{$to} = {
-    initial   => $initial,
+    initial   => $init,
     transform => $with,
   };
 }
