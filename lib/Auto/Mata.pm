@@ -106,14 +106,10 @@ our $DEBUG = $ENV{DEBUG_AUTOMATA};
 my $Ident = declare 'Ident', as StrMatch[qr/^[A-Z][_0-9A-Z]*$/i];
 my $State = declare 'State', as Tuple[$Ident, Any];
 my $Type  = declare 'Type',  as InstanceOf['Type::Tiny'];
-my $Code  = declare 'Code',  as CodeRef;
-coerce $Code, from Undef, via { sub { $_ } };
 coerce $Type, from Undef, via { Any };
 
-my $Transition = declare 'Transition', as Dict[
-  initial   => $Type,
-  transform => $Code,
-];
+my $Transition = declare 'Transition', as Dict[initial => $Type, transform => Maybe[CodeRef]];
+my $Transform  = declare 'Transform',  as Dict[initial => $Type, transform => CodeRef];
 
 my $Automata = declare 'Automata', as Dict[
   ready => Maybe[$Ident],
@@ -206,7 +202,7 @@ sub machine (&) {
         my ($from, $input) = @$_;
         debug('%s -> %s', $from, $to);
 
-        do { local $_ = $input; $input = $with->() };
+        do { local $_ = $input; $input = $with->() } if $with;
         my $state = [$to, $input];
 
         if (defined(my $error = $final->validate($state))) {
@@ -335,7 +331,7 @@ my $_transition_args;
 
 sub transition ($%) {
   assert_in_the_machine();
-  $_transition_args ||= compile($Ident, $Ident, $Type, $Code);
+  $_transition_args ||= compile($Ident, $Ident, $Type, Maybe[CodeRef]);
 
   my ($arg, %param) = @_;
   my ($from, $to, $on, $with) = $_transition_args->($arg, @param{qw(to on with)});
