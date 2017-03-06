@@ -1,4 +1,6 @@
 {{$NEXT}}
+
+0.06 2017-03-06
 - No longer creates empty pass-through function when no 'with' is supplied
 
 0.05 2017-03-03
