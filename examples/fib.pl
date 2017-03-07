@@ -35,13 +35,13 @@ my $Fibs = machine {
 
   # Step through the series until a result is found when the step hits 1 or 0
   transition 'STEP', to 'REDUCE', on $Step, with { [$_->[0] - 1, $_->[1] + $_->[2], $_->[1]] };
-  transition 'REDUCE', to 'STEP', with { $_ };
+  transition 'REDUCE', to 'STEP';
 
-  transition 'STEP', to 'ZERO', on $CarZero, with { $_ };
+  transition 'STEP', to 'ZERO', on $CarZero;
   transition 'ZERO', to 'TERM', with { $_->[2] };
 
-  transition 'STEP', to 'ONE', on $CarOne, with { $_ };
-  transition 'ONE',  to 'TERM', with { $_->[1] };
+  transition 'STEP', to 'ONE', on $CarOne;
+  transition 'ONE', to 'TERM', with { $_->[1] };
 
   # Return the final result
   transition 'STEP', to 'TERM', on $AboveZero;
