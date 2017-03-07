@@ -13,15 +13,15 @@ use Auto::Mata;
 
 # Scalar terms
 my $AboveZero = declare 'AboveZero', as Str, where { looks_like_number($_) && $_ >= 0 };
-my $Zero      = declare 'Zero',      as $AboveZero, where { $_ == 0 };
-my $One       = declare 'One',       as $AboveZero, where { $_ == 1 };
-my $Term      = declare 'Term',      as $AboveZero, where { $_ >= 2 };
+my $Zero = declare 'Zero', as $AboveZero, where { $_ == 0 };
+my $One  = declare 'One',  as $AboveZero, where { $_ == 1 };
+my $Term = declare 'Term', as $AboveZero, where { $_ >= 2 };
 
 # Accumulator constructs
-my $Start     = declare 'Start',     as Tuple[$AboveZero];
-my $Step      = declare 'Step',      as Tuple[$Term, $AboveZero, $AboveZero];
-my $CarZero   = declare 'CarZero',   as Tuple[$Zero, $AboveZero, $AboveZero];
-my $CarOne    = declare 'CarOne',    as Tuple[$One,  $AboveZero, $AboveZero];
+my $Start   = declare 'Start',   as Tuple[$AboveZero];
+my $Step    = declare 'Step',    as Tuple[$Term, $AboveZero, $AboveZero];
+my $CarZero = declare 'CarZero', as Tuple[$Zero, $AboveZero, $AboveZero];
+my $CarOne  = declare 'CarOne',  as Tuple[$One,  $AboveZero, $AboveZero];
 
 my $Fibs = machine {
   ready 'READY';
