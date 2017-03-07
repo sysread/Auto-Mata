@@ -22,42 +22,41 @@ my $Start     = declare 'Start',     as Tuple[$AboveZero];
 my $Step      = declare 'Step',      as Tuple[$Term, $AboveZero, $AboveZero];
 my $CarZero   = declare 'CarZero',   as Tuple[$Zero, $AboveZero, $AboveZero];
 my $CarOne    = declare 'CarOne',    as Tuple[$One,  $AboveZero, $AboveZero];
-my $Result    = declare 'Result',    as Tuple[$AboveZero];
 
 my $Fibs = machine {
   ready 'READY';
   term  'TERM';
 
   # Fail on invalid input
-  transition 'READY', to 'TERM', on ~$Start, with { die 'invalid argument; expected an integer >= 0' };
+  transition 'READY', to 'TERM', on ~$AboveZero, with { die 'invalid argument; expected an integer >= 0' };
 
   # Build the initial accumulator
-  transition 'READY', to 'STEP', on $Start, with { [$_->[0], 1, 0] };
+  transition 'READY', to 'STEP', on $AboveZero, with { [$_, 1, 0] };
 
   # Step through the series until a result is found when the step hits 1 or 0
   transition 'STEP', to 'REDUCE', on $Step, with { [$_->[0] - 1, $_->[1] + $_->[2], $_->[1]] };
   transition 'REDUCE', to 'STEP', with { $_ };
 
   transition 'STEP', to 'ZERO', on $CarZero, with { $_ };
-  transition 'ZERO', to 'TERM', with { [$_->[2]] };
+  transition 'ZERO', to 'TERM', with { $_->[2] };
 
   transition 'STEP', to 'ONE', on $CarOne, with { $_ };
-  transition 'ONE',  to 'TERM', with { [$_->[1]] };
+  transition 'ONE',  to 'TERM', with { $_->[1] };
 
   # Return the final result
-  transition 'STEP', to 'TERM', on $Result;
+  transition 'STEP', to 'TERM', on $AboveZero;
 };
 
 sub fib {
   my $term = shift;
   my $calc = $Fibs->();
-  my $acc  = [$term];
+  my $acc  = $term;
 
   while (my @state = $calc->($acc)) {
     ;
   }
 
-  return $acc->[0];
+  return $acc;
 }
 
 local $| = 1;

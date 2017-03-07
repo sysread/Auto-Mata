@@ -231,7 +231,7 @@ sub machine (&) {
     my $state = $fsm{ready};
     my $done;
 
-    sub {
+    sub (\$) {
       return if $done;
       ($state, $_[0]) = $transform->([$state, $_[0]]);
       $done = $state eq $fsm{term};
