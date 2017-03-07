@@ -26,9 +26,10 @@ subtest 'basics' => sub {
     transition 'READY', to 'REDUCE', on $Remaining;
     transition 'REDUCE', to 'REDUCE', on $Remaining, with { $add_reduce->($_) };
     transition 'REDUCE', to 'TERM', on $Reduced;
+    transition 'REDUCE', to 'TERM', on Undef;
 
-    like dies { transition 'REDUCE', to 'TERM' },
-      qr/transition from state REDUCE to TERM is already defined/,
+    like dies { transition 'REDUCE', to 'TERM', on $Reduced },
+      qr/identical transition REDUCE_to_TERM_on_Reduced already defined/,
       'expected error on duplicate definitions';
   };
 

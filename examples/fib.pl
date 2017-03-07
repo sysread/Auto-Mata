@@ -26,24 +26,12 @@ my $Fibs = machine {
   ready 'READY';
   term  'TERM';
 
-  # Fail on invalid input
-  transition 'READY', to 'TERM', on $Invalid, with { die 'invalid argument; expected an integer >= 0' };
-
-  # Build the initial accumulator
+  transition 'READY', to 'TERM', on $Invalid,  with { die 'invalid argument; expected an integer >= 0' };
   transition 'READY', to 'STEP', on $ZeroPlus, with { [$_, 1, 0] };
-
-  # Step through the series until a result is found when the step hits 1 or 0
-  transition 'STEP', to 'REDUCE', on $Step, with { [$_->[0] - 1, $_->[1] + $_->[2], $_->[1]] };
-  transition 'REDUCE', to 'STEP';
-
-  transition 'STEP', to 'ZERO', on $CarZero;
-  transition 'ZERO', to 'TERM', with { $_->[2] };
-
-  transition 'STEP', to 'ONE', on $CarOne;
-  transition 'ONE', to 'TERM', with { $_->[1] };
-
-  # Return the final result
-  transition 'STEP', to 'TERM', on $ZeroPlus;
+  transition 'STEP',  to 'STEP', on $Step,     with { [$_->[0] - 1, $_->[1] + $_->[2], $_->[1]] };
+  transition 'STEP',  to 'TERM', on $CarZero,  with { $_->[2] };
+  transition 'STEP',  to 'TERM', on $CarOne,   with { $_->[1] };
+  transition 'STEP',  to 'TERM', on $ZeroPlus;
 };
 
 sub fib {

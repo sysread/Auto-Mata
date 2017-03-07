@@ -1,7 +1,8 @@
 {{$NEXT}}
+- Permit duplicate transitions using different constraints
+- New alias 'using' for 'with' to avoid clashing with other 'with' Exporters
 - Fixed bug preventing scalar values from being used as state accumulators
 - Added examples/fib.pl
-- Added using as alias for with to play nicely with Moose, Moo, et al.
 
 0.06 2017-03-06
 - No longer creates empty pass-through function when no 'with' is supplied

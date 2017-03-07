@@ -280,13 +280,6 @@ L</with> is permitted to the current input. If L</with> is not specified, the
 input remains unchanged. Once the transition is complete, the symbol supplied
 by L</to> will identify the current program state.
 
-It is an error to have two identical transitions, even with different
-constraints. This is intentional. A transition that matches two different
-states is, in fact, two distinct transitions, and the program should be modeled
-as such in order to prevent errors due to unexpected or improperly checked
-data. In general, it is a good idea to be as specific as possible with the type
-constraints used to define the initial transition state.
-
 The first transition is always from the "ready" state. The final transition is
 always to the "terminal" state. There may be no transitions from the "terminal"
 state.
@@ -346,12 +339,16 @@ sub transition ($%) {
   my ($arg, %param) = @_;
   my ($from, $to, $on, $with) = $_transition_args->($arg, @param{qw(to on with)});
 
-  #croak "transition from state $from to $to is already defined"
-  #  if exists $_->{map}{$from}{$to};
+  $_->{map}{$from} ||= [];
 
   my $name = $on->name;
   my $init = declare "${from}_to_${to}_on_${name}", as Tuple[Enum[$from], $on];
   debug("New state: $init");
+
+  foreach my $next (@{$_->{map}{$from}}) {
+    croak "identical transition $next->{initial} already defined"
+      if $init == $next->{initial};
+  }
 
   my $transition = {
     to        => $to,
@@ -360,7 +357,6 @@ sub transition ($%) {
   };
 
   # Add this contraint to the list of matches
-  $_->{map}{$from} ||= [];
   push @{$_->{map}{$from}}, $transition;
 }
 
@@ -417,7 +413,8 @@ sub validate {
     unless keys %{$_->{map}};
 
   croak 'no transition defined for ready state'
-    unless @{$_->{map}{$_->{ready}}};
+    unless $_->{map}{$_->{ready}}
+        && @{$_->{map}{$_->{ready}}};
 
   my $is_terminated;
 

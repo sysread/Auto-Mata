@@ -156,13 +156,6 @@ L</with> is permitted to the current input. If L</with> is not specified, the
 input remains unchanged. Once the transition is complete, the symbol supplied
 by L</to> will identify the current program state.
 
-It is an error to have two identical transitions, even with different
-constraints. This is intentional. A transition that matches two different
-states is, in fact, two distinct transitions, and the program should be modeled
-as such in order to prevent errors due to unexpected or improperly checked
-data. In general, it is a good idea to be as specific as possible with the type
-constraints used to define the initial transition state.
-
 The first transition is always from the "ready" state. The final transition is
 always to the "terminal" state. There may be no transitions from the "terminal"
 state.
@@ -185,6 +178,14 @@ transition.
 A code block whose return value is the mutable state used to determine the next
 transition to perform. Within the code block C<$_> is a reference to the
 program state.
+
+=item using
+
+Alias for L</with> that may be used to avoid conflicts with other packages
+exporting C<with>. Prevent the export of C<with> in the typical way (see
+L<Exporter/Specialised-Import-Lists>).
+
+  use Auto::Mata '!with';
 
 =back
 

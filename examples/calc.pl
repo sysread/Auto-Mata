@@ -65,41 +65,16 @@ my $Invalid    = declare 'Invalid',    as ~$Incomplete & ~$Equation & ~$Command;
 
 my $builder = machine {
   ready 'READY';
-  terminal 'TERM';
-
-  transition 'READY', to 'START',
-    on $Incomplete,
-    with { welcome; [] };
-
-  transition 'START', to 'INPUT',
-    on $Incomplete;
-
-  transition 'INPUT', to 'INPUT',
-    on $Incomplete,
-    with { [input(@$_)] };
-
-  transition 'INPUT', to 'ANSWER',
-    on $Equation,
-    with { solve(@$_); [] };
-
-  transition 'INPUT', to 'ERROR',
-    on $Invalid,
-    with { error($_->[0]); $_ };
-
-  transition 'ERROR', to 'INPUT',
-    on $Invalid,
-    with { my ($bad, @stack) = @$_; \@stack };
-
-  transition 'INPUT', to 'START',
-    on $ClearCmd,
-    with { [] };
-
-  transition 'INPUT', to 'TERM',
-    on $ExitCmd,
-    with { goodbye; [] };
-
-  transition 'ANSWER', to 'INPUT',
-    on $Incomplete;
+  term  'TERM';
+  transition 'READY',  to 'START',  on $Incomplete, with { welcome; [] };
+  transition 'START',  to 'INPUT',  on $Incomplete;
+  transition 'INPUT',  to 'INPUT',  on $Incomplete, with { [input(@$_)] };
+  transition 'INPUT',  to 'ANSWER', on $Equation,   with { solve(@$_); [] };
+  transition 'INPUT',  to 'ERROR',  on $Invalid,    with { error($_->[0]); $_ };
+  transition 'ERROR',  to 'INPUT',  on $Invalid,    with { my ($bad, @stack) = @$_; \@stack };
+  transition 'INPUT',  to 'START',  on $ClearCmd,   with { [] };
+  transition 'INPUT',  to 'TERM',   on $ExitCmd,    with { goodbye; [] };
+  transition 'ANSWER', to 'INPUT',  on $Incomplete;
 };
 
 my $fsm = $builder->();
