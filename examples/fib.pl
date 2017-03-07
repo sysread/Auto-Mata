@@ -11,27 +11,25 @@ use Types::Standard -all;
 use Type::Utils -all;
 use Auto::Mata;
 
-# Scalar terms
-my $AboveZero = declare 'AboveZero', as Str, where { looks_like_number($_) && $_ >= 0 };
-my $Zero = declare 'Zero', as $AboveZero, where { $_ == 0 };
-my $One  = declare 'One',  as $AboveZero, where { $_ == 1 };
-my $Term = declare 'Term', as $AboveZero, where { $_ >= 2 };
-
-# Accumulator constructs
-my $Start   = declare 'Start',   as Tuple[$AboveZero];
-my $Step    = declare 'Step',    as Tuple[$Term, $AboveZero, $AboveZero];
-my $CarZero = declare 'CarZero', as Tuple[$Zero, $AboveZero, $AboveZero];
-my $CarOne  = declare 'CarOne',  as Tuple[$One,  $AboveZero, $AboveZero];
+my $Number   = declare 'Number', as Str, where { looks_like_number $_ };
+my $ZeroPlus = declare 'ZeroPlus', as $Number, where { $_ >= 0 };
+my $Zero     = declare 'Zero', as $Number, where { $_ == 0 };
+my $One      = declare 'One',  as $Number, where { $_ == 1 };
+my $Term     = declare 'Term', as $Number, where { $_ >= 2 };
+my $Start    = declare 'Start', as Tuple[$ZeroPlus];
+my $Step     = declare 'Step', as Tuple[$Term, $ZeroPlus, $ZeroPlus];
+my $CarZero  = declare 'CarZero', as Tuple[$Zero, $ZeroPlus, $ZeroPlus];
+my $CarOne   = declare 'CarOne', as Tuple[$One,  $ZeroPlus, $ZeroPlus];
 
 my $Fibs = machine {
   ready 'READY';
   term  'TERM';
 
   # Fail on invalid input
-  transition 'READY', to 'TERM', on ~$AboveZero, with { die 'invalid argument; expected an integer >= 0' };
+  transition 'READY', to 'TERM', on ~$ZeroPlus, with { die 'invalid argument; expected an integer >= 0' };
 
   # Build the initial accumulator
-  transition 'READY', to 'STEP', on $AboveZero, with { [$_, 1, 0] };
+  transition 'READY', to 'STEP', on $ZeroPlus, with { [$_, 1, 0] };
 
   # Step through the series until a result is found when the step hits 1 or 0
   transition 'STEP', to 'REDUCE', on $Step, with { [$_->[0] - 1, $_->[1] + $_->[2], $_->[1]] };
@@ -44,7 +42,7 @@ my $Fibs = machine {
   transition 'ONE', to 'TERM', with { $_->[1] };
 
   # Return the final result
-  transition 'STEP', to 'TERM', on $AboveZero;
+  transition 'STEP', to 'TERM', on $ZeroPlus;
 };
 
 sub fib {

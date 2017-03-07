@@ -339,7 +339,9 @@ sub transition ($%) {
   croak "transition from state $from to $to is already defined"
     if exists $_->{map}{$from}{$to};
 
-  my $init = declare "${from}_TO_${to}_INITIAL", as Tuple[Enum[$from], $on];
+  my $name = $on->name;
+  my $init = declare "${from}_TO_${to}_ON_${name}", as Tuple[Enum[$from], $on];
+  debug("New state: $init");
 
   $_->{map}{$from} ||= {};
 
