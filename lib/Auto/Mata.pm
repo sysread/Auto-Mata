@@ -109,13 +109,13 @@ my $State = declare 'State', as Tuple[$Ident, Any];
 my $Type  = declare 'Type',  as InstanceOf['Type::Tiny'];
 coerce $Type, from Undef, via { Any };
 
-my $Transition = declare 'Transition', as Dict[initial => $Type, transform => Maybe[CodeRef]];
-my $Transform  = declare 'Transform',  as Dict[initial => $Type, transform => CodeRef];
+my $Transition = declare 'Transition', as Dict[to => $Ident, initial => $Type, transform => Maybe[CodeRef]];
+my $Transform  = declare 'Transform',  as Dict[to => $Ident, initial => $Type, transform => CodeRef];
 
 my $Automata = declare 'Automata', as Dict[
   ready => Maybe[$Ident],
   term  => Maybe[$Ident],
-  map   => Map[$Ident, Map[$Ident, $Transition]],
+  map   => Map[$Ident, ArrayRef[$Transition]],
 ];
 
 =head1 EXPORTED SUBROUTINES
@@ -176,12 +176,11 @@ sub machine (&) {
     validate();
   };
 
-  my $terminal = declare $fsm{term}, as Tuple[Enum[$fsm{term}], Any];
-  my %state    = ($fsm{term} => $terminal);
+  my %final = ($fsm{term} => declare $fsm{term}, as Tuple[Enum[$fsm{term}], Any]);
 
   foreach my $from (keys %map) {
-    my @next = map { $map{$from}{$_}{initial} } keys %{$map{$from}};
-    $state{$from} = declare $from, as reduce { $a | $b } @next;
+    my @next = map { $_->{initial} } @{$map{$from}};
+    $final{$from} = declare $from, as reduce { $a | $b } @next;
   }
 
   #-----------------------------------------------------------------------------
@@ -194,10 +193,11 @@ sub machine (&) {
     # Use this to build a matching function that calls the appropriate mutator
     # for that transisiton.
     #---------------------------------------------------------------------------
-    foreach my $to (keys %{$map{$from}}) {
-      my $final   = $state{$to};
-      my $initial = $map{$from}{$to}{initial};
-      my $with    = $map{$from}{$to}{transform};
+    foreach my $transition (@{$map{$from}}) {
+      my $to      = $transition->{to};
+      my $initial = $transition->{initial};
+      my $with    = $transition->{transform};
+      my $final   = $final{$to};
 
       push @match, $initial, sub {
         my ($from, $input) = @$_;
@@ -346,19 +346,22 @@ sub transition ($%) {
   my ($arg, %param) = @_;
   my ($from, $to, $on, $with) = $_transition_args->($arg, @param{qw(to on with)});
 
-  croak "transition from state $from to $to is already defined"
-    if exists $_->{map}{$from}{$to};
+  #croak "transition from state $from to $to is already defined"
+  #  if exists $_->{map}{$from}{$to};
 
   my $name = $on->name;
-  my $init = declare "${from}_TO_${to}_ON_${name}", as Tuple[Enum[$from], $on];
+  my $init = declare "${from}_to_${to}_on_${name}", as Tuple[Enum[$from], $on];
   debug("New state: $init");
 
-  $_->{map}{$from} ||= {};
-
-  $_->{map}{$from}{$to} = {
+  my $transition = {
+    to        => $to,
     initial   => $init,
     transform => $with,
   };
+
+  # Add this contraint to the list of matches
+  $_->{map}{$from} ||= [];
+  push @{$_->{map}{$from}}, $transition;
 }
 
 #-------------------------------------------------------------------------------
@@ -414,7 +417,7 @@ sub validate {
     unless keys %{$_->{map}};
 
   croak 'no transition defined for ready state'
-    unless $_->{map}{$_->{ready}};
+    unless @{$_->{map}{$_->{ready}}};
 
   my $is_terminated;
 
@@ -422,7 +425,9 @@ sub validate {
     croak 'invalid transition from terminal state detected'
       if $from eq $_->{term};
 
-    foreach my $to (keys %{$_->{map}{$from}}) {
+    foreach my $next (@{$_->{map}{$from}}) {
+      my $to = $next->{to};
+
       if ($to eq $_->{term}) {
         $is_terminated = 1;
         next;

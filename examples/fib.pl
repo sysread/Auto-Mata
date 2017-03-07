@@ -13,20 +13,21 @@ use Auto::Mata;
 
 my $Number   = declare 'Number', as Str, where { looks_like_number $_ };
 my $ZeroPlus = declare 'ZeroPlus', as $Number, where { $_ >= 0 };
+my $Invalid  = declare 'Invalid', as ~$ZeroPlus;
 my $Zero     = declare 'Zero', as $Number, where { $_ == 0 };
 my $One      = declare 'One',  as $Number, where { $_ == 1 };
 my $Term     = declare 'Term', as $Number, where { $_ >= 2 };
 my $Start    = declare 'Start', as Tuple[$ZeroPlus];
 my $Step     = declare 'Step', as Tuple[$Term, $ZeroPlus, $ZeroPlus];
 my $CarZero  = declare 'CarZero', as Tuple[$Zero, $ZeroPlus, $ZeroPlus];
-my $CarOne   = declare 'CarOne', as Tuple[$One,  $ZeroPlus, $ZeroPlus];
+my $CarOne   = declare 'CarOne', as Tuple[$One, $ZeroPlus, $ZeroPlus];
 
 my $Fibs = machine {
   ready 'READY';
   term  'TERM';
 
   # Fail on invalid input
-  transition 'READY', to 'TERM', on ~$ZeroPlus, with { die 'invalid argument; expected an integer >= 0' };
+  transition 'READY', to 'TERM', on $Invalid, with { die 'invalid argument; expected an integer >= 0' };
 
   # Build the initial accumulator
   transition 'READY', to 'STEP', on $ZeroPlus, with { [$_, 1, 0] };
