@@ -99,6 +99,7 @@ our @EXPORT = qw(
   to
   on
   with
+  using
 );
 
 our $DEBUG = $ENV{DEBUG_AUTOMATA};
@@ -263,6 +264,7 @@ sub term     ($)   { goto \&terminal }
 sub to       ($;%) { (to   => shift, @_) }
 sub on       ($;%) { (on   => shift, @_) }
 sub with     (&;%) { (with => shift, @_) }
+sub using    (&;%) { goto \&with }
 
 =head2 transition
 
