@@ -1,0 +1,2 @@
+-Support for scalar values as state accumulators
+-Change API to identify transitions by type constraints alone
