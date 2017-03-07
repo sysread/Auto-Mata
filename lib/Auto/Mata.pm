@@ -310,6 +310,14 @@ A code block whose return value is the mutable state used to determine the next
 transition to perform. Within the code block C<$_> is a reference to the
 program state.
 
+=item using
+
+Alias for L</with> that may be used to avoid conflicts with other packages
+exporting C<with>. Prevent the export of C<with> in the typical way (see
+L<Exporter/Specialised-Import-Lists>).
+
+  use Auto::Mata '!with';
+
 =back
 
   machine {
