@@ -228,7 +228,8 @@ sub machine (&) {
 
           croak join "\n",
             sprintf('Transition from %s to %s produced an invalid state.', $from, $to),
-            sprintf('Attempted to move from %s to %s', explain($_), explain($state)),
+            sprintf('Initial state: %s', explain($_)),
+            sprintf('Final state: %s', explain($_)),
             sprintf($error);
         }
 
