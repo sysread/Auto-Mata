@@ -1,5 +1,6 @@
 {{$NEXT}}
 - Fixed bug in placement of =back in POD for Auto::Mata
+- Clearer error messages on invalid transitions
 
 0.07 2017-03-08
 - API change: instance builder now accepts an input to specify whether to
