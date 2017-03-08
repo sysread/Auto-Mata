@@ -66,7 +66,7 @@ my $Invalid    = declare 'Invalid',    as ~$Incomplete & ~$Equation & ~$Command;
 my $builder = machine {
   ready 'READY';
   term  'TERM';
-  transition 'READY',  to 'START',  on $Incomplete, with { welcome; [] };
+  transition 'READY',  to 'START',  on Undef,       with { welcome; [] };
   transition 'START',  to 'INPUT',  on $Incomplete;
   transition 'INPUT',  to 'INPUT',  on $Incomplete, with { [input(@$_)] };
   transition 'INPUT',  to 'ANSWER', on $Equation,   with { solve(@$_); [] };
@@ -78,8 +78,4 @@ my $builder = machine {
 };
 
 my $fsm = $builder->();
-my $stack = [];
-
-while ($fsm->($stack)) {
-  ;
-}
+$fsm->();

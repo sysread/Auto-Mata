@@ -48,7 +48,9 @@ sub fib {
 
 local $| = 1;
 
+my $fibber = $FSM->();
+
 foreach my $term (@ARGV) {
   print "fib($term) = ";
-  print fib($term), "\n";
+  print $fibber->($term), "\n";
 }

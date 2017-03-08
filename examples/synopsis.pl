@@ -18,7 +18,7 @@ sub get_input {
 
 my $fsm = machine {
   ready 'READY';
-  terminal 'TERM';
+  term  'TERM';
 
   transition 'READY', to 'FIRST',
     on $NoData,
@@ -37,10 +37,6 @@ my $fsm = machine {
 };
 
 my $prog = $fsm->();
-my $data;
-
-while ($prog->($data)) {
-  ;
-}
+my $data = $prog->();
 
 printf "Hello %s %s, aged %d years!\n", @$data;

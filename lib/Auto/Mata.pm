@@ -23,7 +23,7 @@ package Auto::Mata;
 
   my $fsm = machine {
     ready 'READY';
-    terminal 'TERM';
+    term  'TERM';
 
     transition 'READY', to 'FIRST',
       on $NoData,
@@ -42,11 +42,7 @@ package Auto::Mata;
   };
 
   my $prog = $fsm->();
-  my $data;
-
-  while (my ($state, $output) = $prog->($data)) {
-    ;
-  }
+  my $data = $prog->();
 
   printf "Hello %s %s, aged %d years!\n", @$data;
 
