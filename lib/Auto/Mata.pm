@@ -338,8 +338,6 @@ L<Exporter/Specialised-Import-Lists>).
 
   use Auto::Mata '!with';
 
-=back
-
   machine {
     ...
 
@@ -354,6 +352,8 @@ L<Exporter/Specialised-Import-Lists>).
         }
       };
   };
+
+=back
 
 =cut
 
