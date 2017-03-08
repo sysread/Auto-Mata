@@ -22,7 +22,7 @@ my $Step     = declare 'Step', as Tuple[$Term, $ZeroPlus, $ZeroPlus];
 my $CarZero  = declare 'CarZero', as Tuple[$Zero, $ZeroPlus, $ZeroPlus];
 my $CarOne   = declare 'CarOne', as Tuple[$One, $ZeroPlus, $ZeroPlus];
 
-my $Fibs = machine {
+my $FSM = machine {
   ready 'READY';
   term  'TERM';
 
@@ -35,11 +35,11 @@ my $Fibs = machine {
 };
 
 sub fib {
-  my $term = shift;
-  my $calc = $Fibs->();
-  my $acc  = $term;
+  my $term   = shift;
+  my $acc    = $term;
+  my $fibber = $FSM->();
 
-  while (my @state = $calc->($acc)) {
+  while (my @state = $fibber->($acc)) {
     ;
   }
 

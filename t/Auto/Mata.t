@@ -23,10 +23,10 @@ subtest 'basics' => sub {
   my $fsm = machine {
     ready      'READY';
     terminal   'TERM';
-    transition 'READY', to 'REDUCE', on $Remaining;
+    transition 'READY',  to 'REDUCE', on $Remaining;
     transition 'REDUCE', to 'REDUCE', on $Remaining, with { $add_reduce->($_) };
-    transition 'REDUCE', to 'TERM', on $Reduced;
-    transition 'REDUCE', to 'TERM', on Undef;
+    transition 'REDUCE', to 'TERM',   on $Reduced,   with { $_->[0] };
+    transition 'REDUCE', to 'TERM',   on Undef;
 
     like dies { transition 'REDUCE', to 'TERM', on $Reduced },
       qr/identical transition REDUCE_to_TERM_on_Reduced already defined/,
@@ -34,24 +34,38 @@ subtest 'basics' => sub {
   };
 
   ok $fsm, 'machine';
-  ok my $adder = $fsm->(), 'instance';
 
-  my $arr = [1, 2, 3];
-  my @states;
-  my @results;
+  subtest 'interactive' => sub {
+    ok my $adder = $fsm->(1), 'instance';
 
-  while (my ($state, $data) = $adder->($arr)) {
-    is $data, $arr, 'returns reference to input';
-    push @states, $state;
-    push @results, [@$data];
-    die "backstop reached" if @states > 10;
-  }
+    my $arr = [1, 2, 3];
+    my @states;
+    my @results;
 
-  is \@states, [qw(REDUCE REDUCE REDUCE TERM)], 'expected state progression';
-  is \@results, [[1, 2, 3], [3, 3], [6], [6]], 'expected result progression';
-  is $arr, [6], 'accumulator contains expected result';
+    while (my ($state, $data) = $adder->($arr)) {
+      is $data, $arr, 'returns reference to input';
+      push @states, $state;
 
-  like dies { $fsm->()->([1, 2, -5]) }, qr/no transitions match/, 'expected error on invalid input type';
+      if (ref $data) {
+        push @results, [@$data];
+      } else {
+        push @results, $data;
+      }
+
+      die "backstop reached" if @states > 10;
+    }
+
+    is \@states, [qw(REDUCE REDUCE REDUCE TERM)], 'expected state progression';
+    is \@results, [[1, 2, 3], [3, 3], [6], 6], 'expected result progression';
+    is $arr, 6, 'accumulator contains expected result';
+
+    like dies { $fsm->()->([1, 2, -5]) }, qr/no transitions match/, 'expected error on invalid input type';
+  };
+
+  subtest 'non-interactive' => sub {
+    ok my $adder = $fsm->(), 'instance';
+    is $adder->([1, 2, 3, 4]), 10, 'result';
+  };
 };
 
 subtest 'invalid state after transition' => sub {
@@ -63,7 +77,7 @@ subtest 'invalid state after transition' => sub {
     transition 'BAR',   to 'TERM', on Tuple[Enum['bar']];
   };
 
-  my $fails = $fsm->();
+  my $fails = $fsm->(1);
   $fails->(my $state);
 
   like dies { $fails->($state) }, qr/produced an invalid state/, 'expected error';

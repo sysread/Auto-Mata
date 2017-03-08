@@ -130,29 +130,41 @@ C<Auto::Mata> is an C<Exporter>. All subroutines are exported by default.
 Creates a lexical context in which a state machine is defined. Returns a
 function that creates new instances of the defined automata.
 
-The automata instance is itself a function that performs a single transition
-per call. It accepts a single reference value as input representing the
-program's current state. This value in conjunction with the current state label
-is matched (see L</on>) against the transition table (defined with
+The automata instance is itself a builder function. When called, it returns a
+new function that accepts the initial program state as input and returns the
+final state.
+
+This instance function's input value in conjunction with the current state
+label is matched (see L</on>) against the transition table (defined with
 L</transition>) to determine the next state.
 
 Once a match has been made, the action defined for the transition (using
 L</with>) will be executed. During evaluation of the L</with> function, C<$_>
 is a reference to the input value.
 
+Note that the input state is modified in place during the transition.
+
+  # Define the state machine
+  my $builder = machine { ... };
+
+  # Create an instance
+  my $instance = $builder->();
+
+  # Run the program to get the result
+  my $result = $instance->($state_data);
+
+If the builder function is called with a true value as the first argument, it
+will instead build an interactive iterator that performs a single transition
+per call. It accepts a single value as input representing the program's current
+state.
+
 The return value is new state's label in scalar context, the label and state in
 list context, and C<undef> after the terminal state has been reached.
 
-Note that the reference used as input may (and likely will have) have been
-modified during the transition. It will always be the reference passed as
-input.
-
   # Define the state machine
-  my $builder = machine {
-    ...
-  };
+  my $builder = machine { ... };
 
-  # Create an instance of the machine that operates on $state.
+  # Create an instance of the machine
   my $program = $builder->();
 
   # Run the program
@@ -170,8 +182,7 @@ sub machine (&) {
   #-----------------------------------------------------------------------------
   # Define the machine parameters
   #-----------------------------------------------------------------------------
-  my %map;
-  my %fsm = (ready => undef, term => undef, map => \%map);
+  my %fsm = (ready => undef, term => undef, map => {});
 
   do {
     local $_ = \%fsm;
@@ -179,7 +190,12 @@ sub machine (&) {
     validate();
   };
 
-  my %final = ($fsm{term} => declare $fsm{term}, as Tuple[Enum[$fsm{term}], Any]);
+  my %map      = %{$fsm{map}};
+  my $ready    = $fsm{ready};
+  my $term     = $fsm{term};
+  my $Terminal = declare 'Terminal', as Tuple[Enum[$term], Any];
+
+  my %final = ($term => $Terminal);
 
   foreach my $from (keys %map) {
     my @next = map { $_->{initial} } @{$map{$from}};
@@ -204,7 +220,7 @@ sub machine (&) {
 
       push @match, $initial, sub {
         my ($from, $input) = @$_;
-        debug('%s -> %s', $from, $to);
+        debug('%s -> %s: %s', $from, $to, explain($input));
 
         do { local $_ = $input; $input = $with->() } if $with;
         my $state = [$to, $input];
@@ -232,14 +248,26 @@ sub machine (&) {
   # Return function that builds a transition engine for the given input
   #-----------------------------------------------------------------------------
   return sub {
-    my $state = $fsm{ready};
+    my $interactive = shift;
+
+    my $state = $ready;
     my $done;
 
-    sub (\$) {
+    my $iter = sub (\$) {
       return if $done;
       ($state, $_[0]) = $transform->([$state, $_[0]]);
-      $done = $state eq $fsm{term};
+      $done = $Terminal->check([$state, $_[0]]);
       wantarray ? ($state, $_[0]) : $state;
+    };
+
+    return $iter if $interactive;
+
+    return sub (\$) {
+      while (my ($state, $acc) = $iter->($_[0])) {
+        ;
+      }
+
+      return $_[0];
     };
   };
 }

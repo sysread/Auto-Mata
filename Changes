@@ -1,5 +1,7 @@
 {{$NEXT}}
-- Permit duplicate transitions using different constraints
+- API change: instance builder now accepts an input to specify whether to
+  return an interactive method (non-interactive by default)
+- Duplicate transitions with different matching constraints are now permitted
 - New alias 'using' for 'with' to avoid clashing with other 'with' Exporters
 - Fixed bug preventing scalar values from being used as state accumulators
 - Added examples/fib.pl
