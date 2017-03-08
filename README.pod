@@ -32,7 +32,7 @@ version 0.07
 
   my $fsm = machine {
     ready 'READY';
-    terminal 'TERM';
+    term  'TERM';
 
     transition 'READY', to 'FIRST',
       on $NoData,
@@ -51,11 +51,7 @@ version 0.07
   };
 
   my $prog = $fsm->();
-  my $data;
-
-  while (my ($state, $output) = $prog->($data)) {
-    ;
-  }
+  my $data = $prog->();
 
   printf "Hello %s %s, aged %d years!\n", @$data;
 
