@@ -109,8 +109,11 @@ my $State = declare 'State', as Tuple[$Ident, Any];
 my $Type  = declare 'Type',  as InstanceOf['Type::Tiny'];
 coerce $Type, from Undef, via { Any };
 
-my $Transition = declare 'Transition', as Dict[to => $Ident, initial => $Type, transform => Maybe[CodeRef]];
-my $Transform  = declare 'Transform',  as Dict[to => $Ident, initial => $Type, transform => CodeRef];
+my $Transition = declare 'Transition', as Dict[
+  to        => $Ident,
+  initial   => $Type,
+  transform => Maybe[CodeRef],
+];
 
 my $Automata = declare 'Automata', as Dict[
   ready => Maybe[$Ident],
