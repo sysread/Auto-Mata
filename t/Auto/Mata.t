@@ -12,7 +12,7 @@ subtest 'utils' => sub {
 subtest 'basics' => sub {
   my $PosInt      = declare 'PosInt',      as Int, where { $_ > 0 };
   my $PosIntArray = declare 'PosIntArray', as ArrayRef[$PosInt];
-  my $Remaining   = declare 'NotReduced',  as $PosIntArray, where { @$_ > 1 };
+  my $Remaining   = declare 'Remaining',   as $PosIntArray, where { @$_ > 1 };
   my $Reduced     = declare 'Reduced',     as $PosIntArray, where { @$_ == 1 };
 
   my $add_reduce = sub {
@@ -29,8 +29,12 @@ subtest 'basics' => sub {
     transition 'REDUCE', to 'TERM',   on Undef;
 
     like dies { transition 'REDUCE', to 'TERM', on $Reduced },
-      qr/identical transition REDUCE_to_TERM_on_Reduced already defined/,
-      'expected error on duplicate definitions';
+      qr/transition conflict in REDUCE to TERM: Reduced already matched by REDUCE_to_TERM_on_Reduced/,
+      'expected error on transition conflict with identical transitions';
+
+    like dies { transition 'REDUCE', to 'FOO', on $Reduced },
+      qr/transition conflict in REDUCE to FOO: Reduced already matched by REDUCE_to_TERM_on_Reduced/,
+      'expected error on transition conflict with equivalent constraints';
   };
 
   ok $fsm, 'machine';

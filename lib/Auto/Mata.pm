@@ -178,7 +178,11 @@ sub machine (&) {
   #-----------------------------------------------------------------------------
   # Define the machine parameters
   #-----------------------------------------------------------------------------
-  my %fsm = (ready => undef, term => undef, map => {});
+  my %fsm = (
+    ready => undef,
+    term  => undef,
+    map   => {},
+  );
 
   do {
     local $_ = \%fsm;
@@ -191,6 +195,11 @@ sub machine (&) {
   my $term     = $fsm{term};
   my $Terminal = declare 'Terminal', as Tuple[Enum[$term], Any];
 
+  #-----------------------------------------------------------------------------
+  # For each state, compile a type union that matches all 'on' constraints
+  # where that state is the 'to' state. This will be used to validate the state
+  # accumulator after each transition to that state.
+  #-----------------------------------------------------------------------------
   my %final = ($term => $Terminal);
 
   foreach my $from (keys %map) {
@@ -374,7 +383,7 @@ sub transition ($%) {
   debug("New state: $init");
 
   foreach my $next (@{$_->{map}{$from}}) {
-    croak "identical transition $next->{initial} already defined"
+    croak "transition conflict in $from to $to: $on already matched by $next->{initial}"
       if $init == $next->{initial};
   }
 
